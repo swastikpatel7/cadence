@@ -26,6 +26,14 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json biome.json ./
 
 COPY apps/web/ ./apps/web/
 
+# Next.js inlines NEXT_PUBLIC_* into the client bundle at `pnpm build`,
+# not at runtime. Railway forwards declared service variables as
+# --build-arg, so anything client code reads via process.env must be
+# declared here AND set on the cadence-web service's Variables tab.
+ARG NEXT_PUBLIC_API_URL
+ARG NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+ENV NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
 ENV NODE_ENV=production
 RUN cd apps/web && pnpm build
 
