@@ -25,13 +25,13 @@ COPY pkg/ ./pkg/
 # 4. Build the api binary, statically linked, stripped. The binary
 #    embeds both the HTTP server and the River worker pool.
 WORKDIR /workspace/apps/api
-RUN --mount=type=cache,target=/root/.cache/go-build \
+RUN --mount=type=cache,id=s/2b23bc27-e613-4155-bc5a-cfd2bc71ac7b-gobuild,target=/root/.cache/go-build \
     CGO_ENABLED=0 GOOS=linux \
     go build -trimpath -ldflags='-s -w' -o /out/api ./cmd/api
 
 # 5. Goose for migrations (run via railway.toml's preDeployCommand).
 WORKDIR /workspace
-RUN --mount=type=cache,target=/root/.cache/go-build \
+RUN --mount=type=cache,id=s/2b23bc27-e613-4155-bc5a-cfd2bc71ac7b-goose,target=/root/.cache/go-build \
     go install -trimpath github.com/pressly/goose/v3/cmd/goose@latest
 
 # ---- runtime ----
