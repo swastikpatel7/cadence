@@ -26,13 +26,13 @@ COPY pkg/ ./pkg/
 
 # 4. Build the api binary, statically linked, stripped.
 WORKDIR /workspace/apps/api
-RUN --mount=type=cache,target=/root/.cache/go-build \
+RUN --mount=type=cache,id=cadence-api-gobuild,target=/root/.cache/go-build \
     CGO_ENABLED=0 GOOS=linux \
     go build -trimpath -ldflags='-s -w' -o /out/api ./cmd/api
 
 # 5. Goose for migrations (run via railway.toml's preDeployCommand).
 WORKDIR /workspace
-RUN --mount=type=cache,target=/root/.cache/go-build \
+RUN --mount=type=cache,id=cadence-api-goose,target=/root/.cache/go-build \
     go install -trimpath github.com/pressly/goose/v3/cmd/goose@latest
 
 # ---- runtime ----

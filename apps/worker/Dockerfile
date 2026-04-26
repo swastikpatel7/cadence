@@ -19,7 +19,7 @@ COPY apps/ ./apps/
 COPY pkg/ ./pkg/
 
 WORKDIR /workspace/apps/worker
-RUN --mount=type=cache,target=/root/.cache/go-build \
+RUN --mount=type=cache,id=cadence-worker-gobuild,target=/root/.cache/go-build \
     CGO_ENABLED=0 GOOS=linux \
     go build -trimpath -ldflags='-s -w' -o /out/worker ./cmd/worker
 
