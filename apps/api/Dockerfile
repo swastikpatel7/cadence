@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7
 # Build context = repo root (set via Railway "Root Directory = /" + this
-# Dockerfile path). We need go.work + all module manifests to resolve the
-# go workspace.
+# Dockerfile path). We need go.work + each module's go.mod/go.sum to
+# resolve the go workspace.
 
 FROM golang:1.25-alpine AS builder
 RUN apk add --no-cache git ca-certificates
@@ -12,19 +12,18 @@ WORKDIR /workspace
 #    dependency layer caches independently of source changes.
 COPY go.work go.work.sum ./
 COPY apps/api/go.mod apps/api/go.sum ./apps/api/
-COPY apps/worker/go.mod apps/worker/go.sum ./apps/worker/
 COPY pkg/go.mod pkg/go.sum ./pkg/
 
 # 2. Pre-download deps (cached as long as go.mod/sum don't change).
-RUN cd apps/api    && go mod download \
- && cd ../worker   && go mod download \
- && cd ../../pkg   && go mod download
+RUN cd apps/api && go mod download \
+ && cd ../../pkg && go mod download
 
 # 3. Copy actual source.
 COPY apps/ ./apps/
 COPY pkg/ ./pkg/
 
-# 4. Build the api binary, statically linked, stripped.
+# 4. Build the api binary, statically linked, stripped. The binary
+#    embeds both the HTTP server and the River worker pool.
 WORKDIR /workspace/apps/api
 RUN --mount=type=cache,id=cadence-api-gobuild,target=/root/.cache/go-build \
     CGO_ENABLED=0 GOOS=linux \

@@ -11,7 +11,10 @@ pre-commit:
       stage_fixed: true
     golangci-lint:
       glob: "*.go"
-      run: golangci-lint run --fix ./...
+      # golangci-lint v2 can't expand `./...` from the repo root when
+      # there's no module at the root — only in go.work members. List
+      # the workspace modules explicitly.
+      run: golangci-lint run --fix ./apps/api/... ./pkg/...
       stage_fixed: true
     go-mod-tidy:
       glob: "go.{mod,sum}"
@@ -24,4 +27,4 @@ pre-push:
       run: pnpm turbo typecheck
     go-vet:
       glob: "*.go"
-      run: go vet ./...
+      run: go vet ./apps/api/... ./pkg/...

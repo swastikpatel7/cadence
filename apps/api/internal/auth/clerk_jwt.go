@@ -1,12 +1,12 @@
 // Package auth implements Clerk session JWT verification.
 //
 // Flow per request:
-//   1. Read "Authorization: Bearer <jwt>"
-//   2. Verify signature against Clerk's JWKS (cached, auto-refreshed)
-//   3. Verify issuer + expiry
-//   4. Extract Clerk's `sub` claim (the clerk_user_id)
-//   5. Resolve to our internal user UUID — Redis cache-aside, DB on miss
-//   6. Inject the internal UUID into ctx
+//  1. Read "Authorization: Bearer <jwt>"
+//  2. Verify signature against Clerk's JWKS (cached, auto-refreshed)
+//  3. Verify issuer + expiry
+//  4. Extract Clerk's `sub` claim (the clerk_user_id)
+//  5. Resolve to our internal user UUID — in-process cache, DB on miss
+//  6. Inject the internal UUID into ctx
 package auth
 
 import (
@@ -24,8 +24,8 @@ import (
 	"github.com/lestrrat-go/httprc/v3"
 	"github.com/lestrrat-go/jwx/v3/jwk"
 	"github.com/lestrrat-go/jwx/v3/jwt"
-	"github.com/redis/go-redis/v9"
 
+	"github.com/swastikpatel7/cadence/apps/api/internal/cache"
 	dbgen "github.com/swastikpatel7/cadence/pkg/db/generated"
 	pkglogger "github.com/swastikpatel7/cadence/pkg/logger"
 )
@@ -35,7 +35,6 @@ type userIDCtxKey struct{}
 const (
 	bearerPrefix    = "Bearer "
 	headerAuth      = "Authorization"
-	cacheKeyPrefix  = "auth:user_id:"
 	cacheTTL        = 5 * time.Minute
 	refreshInterval = 10 * time.Minute
 )
@@ -47,7 +46,7 @@ type Verifier struct {
 	jwksURL   string
 	jwksCache *jwk.Cache
 	queries   *dbgen.Queries
-	redis     *redis.Client
+	users     *cache.Cache[uuid.UUID]
 }
 
 // NewVerifier constructs a Verifier and warms the JWKS cache. Returns
@@ -56,7 +55,7 @@ func NewVerifier(
 	ctx context.Context,
 	jwksURL, issuer string,
 	queries *dbgen.Queries,
-	rdb *redis.Client,
+	users *cache.Cache[uuid.UUID],
 ) (*Verifier, error) {
 	if jwksURL == "" {
 		return nil, errors.New("auth: jwks URL required")
@@ -64,11 +63,11 @@ func NewVerifier(
 	if issuer == "" {
 		return nil, errors.New("auth: issuer required")
 	}
-	cache, err := jwk.NewCache(ctx, httprc.NewClient())
+	cch, err := jwk.NewCache(ctx, httprc.NewClient())
 	if err != nil {
 		return nil, fmt.Errorf("auth: init jwks cache: %w", err)
 	}
-	if err := cache.Register(ctx, jwksURL,
+	if err := cch.Register(ctx, jwksURL,
 		jwk.WithMinInterval(refreshInterval),
 		jwk.WithWaitReady(true),
 	); err != nil {
@@ -77,9 +76,9 @@ func NewVerifier(
 	return &Verifier{
 		issuer:    issuer,
 		jwksURL:   jwksURL,
-		jwksCache: cache,
+		jwksCache: cch,
 		queries:   queries,
-		redis:     rdb,
+		users:     users,
 	}, nil
 }
 
@@ -151,19 +150,15 @@ func (v *Verifier) HumaMiddleware(api huma.API) func(huma.Context, func(huma.Con
 	}
 }
 
-// resolveUserID maps clerk_user_id → internal user UUID. Cache-aside Redis.
-// On miss in the DB we lazy-provision a row so Clerk-authed requests don't
-// require the webhook to have run first (the webhook is still the canonical
-// path; this is the belt for cases where it hasn't fired yet — local dev
-// without the webhook URL configured, signups during a webhook outage, etc).
+// resolveUserID maps clerk_user_id → internal user UUID. Cache-aside in
+// process. On miss in the DB we lazy-provision a row so Clerk-authed
+// requests don't require the webhook to have run first (the webhook is
+// still the canonical path; this is the belt for cases where it hasn't
+// fired yet — local dev without the webhook URL configured, signups
+// during a webhook outage, etc).
 func (v *Verifier) resolveUserID(ctx context.Context, clerkUserID, emailHint string) (uuid.UUID, error) {
-	cacheKey := cacheKeyPrefix + clerkUserID
-
-	if cached, err := v.redis.Get(ctx, cacheKey).Result(); err == nil {
-		if id, err := uuid.Parse(cached); err == nil {
-			return id, nil
-		}
-		// Bad cache value — let the DB lookup overwrite it.
+	if id, ok := v.users.Get(clerkUserID); ok {
+		return id, nil
 	}
 
 	user, err := v.queries.GetUserByClerkID(ctx, clerkUserID)
@@ -185,9 +180,7 @@ func (v *Verifier) resolveUserID(ctx context.Context, clerkUserID, emailHint str
 		return uuid.Nil, fmt.Errorf("user lookup: %w", err)
 	}
 
-	// Best-effort cache write.
-	_ = v.redis.Set(ctx, cacheKey, user.ID.String(), cacheTTL).Err()
-
+	v.users.Set(clerkUserID, user.ID, cacheTTL)
 	return user.ID, nil
 }
 
@@ -213,4 +206,3 @@ func writeUnauthorized(w http.ResponseWriter, msg string) {
 	})
 	_, _ = w.Write(body)
 }
-

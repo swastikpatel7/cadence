@@ -113,7 +113,7 @@ func postForm(ctx context.Context, httpClient *http.Client, form url.Values) (*T
 	if err != nil {
 		return nil, fmt.Errorf("strava oauth: do request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {

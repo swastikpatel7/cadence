@@ -1,15 +1,14 @@
-.PHONY: help bootstrap up down logs psql redis migrate-up migrate-down migrate-status \
-        gen-sqlc gen-api gen api worker web format test lint typecheck
+.PHONY: help bootstrap up down logs psql migrate-up migrate-down migrate-status \
+        gen-sqlc gen-api gen api web format test lint typecheck
 
 help:
 	@echo "Cadence — common make targets"
 	@echo ""
 	@echo "  bootstrap         Install all dependencies (pnpm + go work sync)"
-	@echo "  up                Start Postgres + Redis (docker compose)"
+	@echo "  up                Start Postgres (docker compose)"
 	@echo "  down              Stop docker compose services"
 	@echo "  logs              Tail docker compose logs"
 	@echo "  psql              Open psql shell against local DB"
-	@echo "  redis             Open redis-cli against local Redis"
 	@echo ""
 	@echo "  migrate-up        Apply pending goose migrations"
 	@echo "  migrate-down      Roll back one goose migration"
@@ -19,8 +18,7 @@ help:
 	@echo "  gen-api           Regenerate orval TS client from openapi.yaml"
 	@echo "  gen               Run all codegen"
 	@echo ""
-	@echo "  api               Run apps/api with hot-reload"
-	@echo "  worker            Run apps/worker with hot-reload"
+	@echo "  api               Run apps/api with hot-reload (HTTP server + River worker)"
 	@echo "  web               Run apps/web (Next.js dev server)"
 	@echo ""
 	@echo "  format            Format all code (biome + gofmt)"
@@ -44,9 +42,6 @@ logs:
 psql:
 	docker compose exec postgres psql -U cadence -d cadence
 
-redis:
-	docker compose exec redis redis-cli
-
 migrate-up:
 	cd apps/api && goose -dir internal/db/migrations postgres "$$DATABASE_URL" up
 
@@ -66,9 +61,6 @@ gen: gen-sqlc gen-api
 
 api:
 	cd apps/api && air -c .air.toml
-
-worker:
-	cd apps/worker && air -c .air.toml
 
 web:
 	pnpm --filter web dev
