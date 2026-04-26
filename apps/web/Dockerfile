@@ -11,7 +11,7 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json ./
 COPY apps/web/package.json ./apps/web/
 COPY packages/ ./packages/
 
-RUN --mount=type=cache,id=cadence-web-pnpm,target=/root/.local/share/pnpm/store \
+RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
     pnpm install --frozen-lockfile
 
 # ---- builder ----
