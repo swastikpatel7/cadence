@@ -15,16 +15,16 @@ import (
 	"github.com/riverqueue/river"
 	"golang.org/x/oauth2"
 
-	dbgen "github.com/swastikpatel7/cadence/pkg/db/generated"
 	pkgcrypto "github.com/swastikpatel7/cadence/pkg/crypto"
+	dbgen "github.com/swastikpatel7/cadence/pkg/db/generated"
 	pkglogger "github.com/swastikpatel7/cadence/pkg/logger"
 	"github.com/swastikpatel7/cadence/pkg/strava"
 )
 
 const (
-	providerStrava   = "strava"
-	progressFlushAt  = 5 // persist sync_progress every N activities
-	pageSize         = 200
+	providerStrava      = "strava"
+	progressFlushAt     = 5 // persist sync_progress every N activities
+	pageSize            = 200
 	maxConsecutivePages = 50 // safety stop in case the loop never hits an empty page
 )
 
@@ -252,7 +252,7 @@ func (w *StravaSyncWorker) upsertActivity(
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 	q := w.queries.WithTx(tx)
 
 	sportType := sa.SportType

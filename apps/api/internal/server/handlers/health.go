@@ -21,9 +21,8 @@ type healthOutput struct {
 // /livez returns 200 as long as the process responds. Used by the platform
 // to know whether to restart the container.
 //
-// /readyz returns 200 only if all dependencies (DB, Redis) are reachable.
-// In Phase 1 it has no deps to check, so it returns 200 unconditionally;
-// Phase 2 will inject a probe func that round-trips against the DB.
+// /readyz returns 200 only if all dependencies (DB) are reachable. The
+// probe is injected by internal/system.
 func RegisterHealth(api huma.API, ready ReadyProbe) {
 	huma.Register(api, huma.Operation{
 		OperationID: "livez",
@@ -52,6 +51,5 @@ func RegisterHealth(api huma.API, ready ReadyProbe) {
 }
 
 // ReadyProbe is invoked on every /readyz request. Return non-nil to
-// signal the service should not receive traffic. Phase 2 will pass a
-// probe that does `db.Ping()` and `redis.Ping()`.
+// signal the service should not receive traffic.
 type ReadyProbe func(ctx context.Context) error

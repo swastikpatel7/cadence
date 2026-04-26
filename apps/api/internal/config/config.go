@@ -16,7 +16,6 @@ const (
 	EnvLogLevel    = "LOG_LEVEL"
 	EnvPortAPI     = "PORT_API"
 	EnvDatabaseURL = "DATABASE_URL"
-	EnvRedisURL    = "REDIS_URL"
 
 	// Auth (Phase 2)
 	EnvClerkJWKSURL       = "CLERK_JWKS_URL"
@@ -47,7 +46,6 @@ type Config struct {
 	LogLevel    string
 	PortAPI     int
 	DatabaseURL string
-	RedisURL    string
 
 	ClerkJWKSURL       string
 	ClerkIssuer        string
@@ -73,7 +71,6 @@ func Load() (*Config, error) {
 		AppEnv:                   getEnv(EnvAppEnv, "development"),
 		LogLevel:                 getEnv(EnvLogLevel, "debug"),
 		DatabaseURL:              os.Getenv(EnvDatabaseURL),
-		RedisURL:                 os.Getenv(EnvRedisURL),
 		ClerkJWKSURL:             os.Getenv(EnvClerkJWKSURL),
 		ClerkIssuer:              os.Getenv(EnvClerkIssuer),
 		ClerkWebhookSecret:       os.Getenv(EnvClerkWebhookSecret),
@@ -101,17 +98,14 @@ func Load() (*Config, error) {
 }
 
 // Validate checks the invariants we want guaranteed at startup.
-// Phase 2: DB and Redis are now required (the API can't run without them).
-// Other fields stay optional until their phase wires them in.
+// DB is required (the API can't run without it). Other fields stay
+// optional until their phase wires them in.
 func (c *Config) Validate() error {
 	if c.PortAPI <= 0 || c.PortAPI > 65535 {
 		return errors.New("config: PORT_API out of range")
 	}
 	if c.DatabaseURL == "" {
 		return fmt.Errorf("config: %s is required", EnvDatabaseURL)
-	}
-	if c.RedisURL == "" {
-		return fmt.Errorf("config: %s is required", EnvRedisURL)
 	}
 	return nil
 }

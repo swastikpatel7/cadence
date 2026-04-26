@@ -15,15 +15,18 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/redis/go-redis/v9"
 	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/riverdriver/riverpgxv5"
+	"golang.org/x/oauth2"
 
 	"github.com/swastikpatel7/cadence/apps/api/internal/auth"
+	"github.com/swastikpatel7/cadence/apps/api/internal/cache"
 	"github.com/swastikpatel7/cadence/apps/api/internal/config"
 	"github.com/swastikpatel7/cadence/apps/api/internal/connections"
+	"github.com/swastikpatel7/cadence/apps/api/internal/jobs"
 	"github.com/swastikpatel7/cadence/apps/api/internal/server"
 	"github.com/swastikpatel7/cadence/apps/api/internal/server/handlers"
 	pkgcrypto "github.com/swastikpatel7/cadence/pkg/crypto"
@@ -37,14 +40,13 @@ const (
 	readyPingTimeout   = 2 * time.Second
 )
 
-// Dependencies is the live wiring of the API service. main never sees
-// internal clients (DB pool, Redis) directly — those stay private and
-// are consumed by services/handlers via constructor injection.
+// Dependencies is the live wiring of the API service. The same process
+// owns the HTTP server and the River worker pool; main starts both and
+// drains both on shutdown.
 type Dependencies struct {
 	Logger      *slog.Logger
 	Config      *config.Config
 	DB          *pgxpool.Pool
-	Redis       *redis.Client
 	Queries     *dbgen.Queries
 	Verifier    *auth.Verifier
 	River       *river.Client[pgx.Tx]
@@ -52,9 +54,15 @@ type Dependencies struct {
 	Server      *http.Server
 }
 
-// InitDependencies wires logger + config + DB + Redis + Clerk verifier
-// + HTTP server. Fails fast if Postgres or Redis aren't reachable.
-// Clerk verifier is optional in dev (skipped if CLERK_JWKS_URL is empty).
+// InitDependencies wires logger + config + DB + caches + Clerk verifier
+// + River + HTTP server. Fails fast if Postgres isn't reachable.
+//
+// Optional pieces:
+//   - Clerk verifier (skipped if CLERK_JWKS_URL is empty)
+//   - Strava connections + sync worker (skipped if Strava env is incomplete)
+//
+// River is always started: even without Strava, the noop periodic job
+// runs as a sanity check that the queue loop is healthy.
 func InitDependencies(ctx context.Context) (*Dependencies, error) {
 	cfg, err := config.Load()
 	if err != nil {
@@ -68,66 +76,81 @@ func InitDependencies(ctx context.Context) (*Dependencies, error) {
 		return nil, fmt.Errorf("system: postgres: %w", err)
 	}
 
-	rdb, err := newRedisClient(ctx, cfg.RedisURL)
-	if err != nil {
-		pool.Close()
-		return nil, fmt.Errorf("system: redis: %w", err)
-	}
-
 	queries := dbgen.New(pool)
+
+	userCache := cache.New[uuid.UUID]()
 
 	var verifier *auth.Verifier
 	if cfg.ClerkJWKSURL != "" {
-		verifier, err = auth.NewVerifier(ctx, cfg.ClerkJWKSURL, cfg.ClerkIssuer, queries, rdb)
+		verifier, err = auth.NewVerifier(ctx, cfg.ClerkJWKSURL, cfg.ClerkIssuer, queries, userCache)
 		if err != nil {
 			pool.Close()
-			_ = rdb.Close()
 			return nil, fmt.Errorf("system: clerk verifier: %w", err)
 		}
 	} else {
 		log.Warn("CLERK_JWKS_URL not set; authed routes disabled (dev only)")
 	}
 
-	// Strava connections: only wired if all required env vars are present.
-	// In dev without Strava credentials, the API still starts; the start /
-	// callback / sync endpoints are simply not registered.
+	// Strava-side wiring (cipher + OAuth + sync worker). All-or-nothing:
+	// if any required env var is missing, the connections feature stays
+	// off and the sync worker is not registered.
 	var (
-		connService *connections.Service
-		riverClient *river.Client[pgx.Tx]
+		cipher    *pkgcrypto.TokenCipher
+		oauthCfg  *oauth2.Config
+		hasStrava = hasStravaConfig(cfg)
 	)
-	if hasStravaConfig(cfg) {
-		cipher, err := newTokenCipher(cfg.EncryptionKey)
+	if hasStrava {
+		cipher, err = newTokenCipher(cfg.EncryptionKey)
 		if err != nil {
 			pool.Close()
-			_ = rdb.Close()
 			return nil, fmt.Errorf("system: token cipher: %w", err)
 		}
-		// Insert-only River client: never Start()ed. River still requires
-		// every kind we Insert() to be present in the Workers bundle, so
-		// pkg/strava.RegisterInsertOnlyWorkers seeds it with stubs for each
-		// Strava-side job kind. The real processing happens in apps/worker.
-		insertWorkers := river.NewWorkers()
-		strava.RegisterInsertOnlyWorkers(insertWorkers)
-		riverClient, err = river.NewClient(riverpgxv5.New(pool), &river.Config{
-			Workers: insertWorkers,
-			Logger:  log,
-		})
-		if err != nil {
-			pool.Close()
-			_ = rdb.Close()
-			return nil, fmt.Errorf("system: river client: %w", err)
-		}
-		oauthCfg := strava.NewOAuthConfig(cfg.StravaClientID, cfg.StravaClientSecret, cfg.StravaCallbackURL)
+		oauthCfg = strava.NewOAuthConfig(cfg.StravaClientID, cfg.StravaClientSecret, cfg.StravaCallbackURL)
+	} else {
+		log.Warn("Strava env vars incomplete; connection endpoints + sync worker disabled (dev only)")
+	}
+
+	// Build the worker bundle before the client (river requires every
+	// kind we Insert() to be registered up front).
+	workers := river.NewWorkers()
+	river.AddWorker(workers, &jobs.NoopWorker{})
+	if hasStrava {
+		river.AddWorker(workers, jobs.NewStravaSyncWorker(pool, queries, cipher, oauthCfg))
+	}
+
+	periodicJobs := []*river.PeriodicJob{
+		river.NewPeriodicJob(
+			river.PeriodicInterval(30*time.Second),
+			func() (river.JobArgs, *river.InsertOpts) {
+				return jobs.NoopArgs{}, nil
+			},
+			&river.PeriodicJobOpts{RunOnStart: true},
+		),
+	}
+
+	riverClient, err := river.NewClient(riverpgxv5.New(pool), &river.Config{
+		Queues: map[string]river.QueueConfig{
+			river.QueueDefault: {MaxWorkers: 5},
+		},
+		Workers:      workers,
+		PeriodicJobs: periodicJobs,
+		Logger:       log,
+	})
+	if err != nil {
+		pool.Close()
+		return nil, fmt.Errorf("system: river client: %w", err)
+	}
+
+	var connService *connections.Service
+	if hasStrava {
 		connService = connections.NewService(connections.Deps{
 			Queries: queries,
-			State:   connections.NewStateStore(rdb),
+			State:   connections.NewStateStore(cache.New[uuid.UUID]()),
 			Cipher:  cipher,
 			OAuth:   oauthCfg,
 			River:   riverClient,
 			Logger:  log,
 		})
-	} else {
-		log.Warn("Strava env vars incomplete; connection endpoints disabled (dev only)")
 	}
 
 	srv, err := server.New(server.Deps{
@@ -135,14 +158,13 @@ func InitDependencies(ctx context.Context) (*Dependencies, error) {
 		Logger:        log,
 		Queries:       queries,
 		Verifier:      verifier,
-		ReadyProbe:    makeReadyProbe(pool, rdb),
+		ReadyProbe:    makeReadyProbe(pool),
 		WebhookSecret: cfg.ClerkWebhookSecret,
 		Connections:   connService,
 		WebBaseURL:    cfg.WebBaseURL,
 	})
 	if err != nil {
 		pool.Close()
-		_ = rdb.Close()
 		return nil, fmt.Errorf("system: build server: %w", err)
 	}
 
@@ -150,7 +172,6 @@ func InitDependencies(ctx context.Context) (*Dependencies, error) {
 		Logger:      log,
 		Config:      cfg,
 		DB:          pool,
-		Redis:       rdb,
 		Queries:     queries,
 		Verifier:    verifier,
 		River:       riverClient,
@@ -192,43 +213,21 @@ func newPostgresPool(ctx context.Context, url string) (*pgxpool.Pool, error) {
 	return pool, nil
 }
 
-func newRedisClient(ctx context.Context, url string) (*redis.Client, error) {
-	opts, err := redis.ParseURL(url)
-	if err != nil {
-		return nil, fmt.Errorf("parse url: %w", err)
-	}
-	client := redis.NewClient(opts)
-	pingCtx, cancel := context.WithTimeout(ctx, startupPingTimeout)
-	defer cancel()
-	if err := client.Ping(pingCtx).Err(); err != nil {
-		_ = client.Close()
-		return nil, fmt.Errorf("ping: %w", err)
-	}
-	return client, nil
-}
-
-func makeReadyProbe(pool *pgxpool.Pool, rdb *redis.Client) handlers.ReadyProbe {
+func makeReadyProbe(pool *pgxpool.Pool) handlers.ReadyProbe {
 	return func(ctx context.Context) error {
 		pingCtx, cancel := context.WithTimeout(ctx, readyPingTimeout)
 		defer cancel()
 		if err := pool.Ping(pingCtx); err != nil {
 			return fmt.Errorf("postgres: %w", err)
 		}
-		if err := rdb.Ping(pingCtx).Err(); err != nil {
-			return fmt.Errorf("redis: %w", err)
-		}
 		return nil
 	}
 }
 
-// Close releases pool and redis client. Safe to call multiple times.
+// Close releases the Postgres pool. River is stopped separately by main
+// (via Stop with a drain context).
 func (d *Dependencies) Close() error {
 	var errs []error
-	if d.Redis != nil {
-		if err := d.Redis.Close(); err != nil {
-			errs = append(errs, fmt.Errorf("redis close: %w", err))
-		}
-	}
 	if d.DB != nil {
 		d.DB.Close()
 	}
