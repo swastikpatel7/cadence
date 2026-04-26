@@ -35,6 +35,7 @@ WORKDIR /workspace
 
 ENV NODE_ENV=production
 ENV PORT=3000
+ENV HOSTNAME=0.0.0.0
 
 # Next.js standalone output bundles a minimal node_modules + server.js.
 # `outputFileTracingRoot=/workspace` (set in next.config.ts) means the
