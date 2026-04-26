@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 256 256">
+  <defs>
+    <linearGradient id="vio" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#7d4ddf"/>
+      <stop offset="100%" stop-color="#5a6dd9"/>
+    </linearGradient>
+  </defs>
+  <rect width="256" height="256" rx="56" fill="url(#vio)"/>
+  <rect x="0" y="0" width="256" height="2" rx="1" fill="#ffffff" opacity="0.22"/>
+  <text x="128" y="180" text-anchor="middle" font-family="Geist, system-ui, sans-serif" font-weight="600" font-size="170" letter-spacing="-8" fill="#ffffff">c.</text>
+</svg>
+

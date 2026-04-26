@@ -1,0 +1,47 @@
+# Repo-root .dockerignore. All three Dockerfiles use the repo root as their
+# build context, so this controls what ships into the build.
+
+# VCS + editor
+.git
+.gitignore
+.gitattributes
+.editorconfig
+.vscode
+.idea
+.cursor
+
+# Local secrets — never bake into images
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# Node build outputs
+node_modules
+**/node_modules
+.next
+**/.next
+.turbo
+**/.turbo
+**/dist
+**/build
+
+# Go build outputs
+**/*.test
+**/*.out
+
+# Docs / scratch
+docs/
+*.md
+v1-build-plan.md
+.tool-versions
+
+# CI / Docker meta
+.github
+**/Dockerfile
+**/*.dockerignore
+
+# Testing fixtures
+**/coverage
+**/.coverage

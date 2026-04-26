@@ -1,0 +1,12 @@
+{
+  "name": "@cadence/api",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "air -c .air.toml",
+    "build": "go build -o ./tmp/api ./cmd/api",
+    "test": "go test ./...",
+    "lint": "golangci-lint run",
+    "typecheck": "go vet ./..."
+  }
+}

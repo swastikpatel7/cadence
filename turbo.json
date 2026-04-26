@@ -1,0 +1,51 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "globalDependencies": [
+    "**/.env",
+    "**/.env.local",
+    "**/.env.*.local",
+    "tsconfig*.json",
+    ".tool-versions"
+  ],
+  "globalEnv": [
+    "NODE_ENV",
+    "APP_ENV",
+    "LOG_LEVEL"
+  ],
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build", "gen:api"],
+      "outputs": [".next/**", "!.next/cache/**", "dist/**", "bin/**"],
+      "env": [
+        "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY",
+        "NEXT_PUBLIC_API_URL"
+      ]
+    },
+    "dev": {
+      "cache": false,
+      "persistent": true
+    },
+    "test": {
+      "dependsOn": ["^build"],
+      "outputs": ["coverage/**"]
+    },
+    "lint": {
+      "outputs": []
+    },
+    "typecheck": {
+      "dependsOn": ["^build"],
+      "outputs": []
+    },
+    "gen:api": {
+      "inputs": ["api/openapi.yaml"],
+      "outputs": ["packages/api-client/src/generated/**"]
+    },
+    "gen:db": {
+      "inputs": [
+        "apps/api/internal/db/queries/**",
+        "apps/api/sqlc.yaml"
+      ],
+      "outputs": ["apps/api/internal/db/generated/**"]
+    }
+  }
+}

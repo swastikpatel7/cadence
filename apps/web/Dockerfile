@@ -1,0 +1,48 @@
+# syntax=docker/dockerfile:1.7
+# Build context = repo root. Builds the Next.js standalone bundle, then
+# copies just the runtime artifacts into a slim node image.
+
+FROM node:20-bookworm-slim AS deps
+RUN corepack enable
+WORKDIR /workspace
+
+# Workspace manifests first for layer caching.
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json ./
+COPY apps/web/package.json ./apps/web/
+COPY packages/ ./packages/
+
+RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
+    pnpm install --frozen-lockfile
+
+# ---- builder ----
+FROM node:20-bookworm-slim AS builder
+RUN corepack enable
+WORKDIR /workspace
+
+COPY --from=deps /workspace/node_modules ./node_modules
+COPY --from=deps /workspace/apps/web/node_modules ./apps/web/node_modules
+COPY --from=deps /workspace/packages ./packages
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json biome.json ./
+
+COPY apps/web/ ./apps/web/
+
+ENV NODE_ENV=production
+RUN cd apps/web && pnpm build
+
+# ---- runtime ----
+FROM node:20-bookworm-slim AS runtime
+WORKDIR /workspace
+
+ENV NODE_ENV=production
+ENV PORT=3000
+
+# Next.js standalone output bundles a minimal node_modules + server.js.
+# `outputFileTracingRoot=/workspace` (set in next.config.ts) means the
+# standalone tree is rooted at /workspace, with apps/web/server.js as the
+# entry point.
+COPY --from=builder /workspace/apps/web/.next/standalone/ ./
+COPY --from=builder /workspace/apps/web/.next/static ./apps/web/.next/static
+COPY --from=builder /workspace/apps/web/public ./apps/web/public
+
+EXPOSE 3000
+CMD ["node", "apps/web/server.js"]

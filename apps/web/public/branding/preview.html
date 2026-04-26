@@ -1,0 +1,402 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <title>Cadence — wordmark options</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0a0c18;
+      --bg-card: #11131f;
+      --fg: #f0f5f3;
+      --fg-mute: rgba(255,255,255,0.55);
+      --fg-faint: rgba(255,255,255,0.40);
+      --hairline: rgba(255,255,255,0.08);
+      --hairline-2: rgba(255,255,255,0.05);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 56px 32px 96px;
+      font-family: "Geist", system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--fg);
+      -webkit-font-smoothing: antialiased;
+    }
+    .wrap { max-width: 1180px; margin: 0 auto; }
+    h1 {
+      font-weight: 500;
+      letter-spacing: -0.025em;
+      font-size: 32px;
+      margin: 0 0 8px;
+    }
+    p.lead {
+      color: var(--fg-mute);
+      max-width: 60ch;
+      margin: 0 0 64px;
+      line-height: 1.6;
+      font-size: 15px;
+    }
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--hairline);
+      border-radius: 22px;
+      padding: 0;
+      margin-bottom: 28px;
+      overflow: hidden;
+    }
+    .card-head {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      padding: 20px 28px;
+      border-bottom: 1px solid var(--hairline-2);
+      gap: 24px;
+    }
+    .card-head h2 {
+      font-size: 12px;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.22em;
+      color: var(--fg-mute);
+      margin: 0;
+    }
+    .card-head .label {
+      font-family: ui-monospace, "Geist Mono", monospace;
+      font-size: 11px;
+      letter-spacing: 0.14em;
+      color: var(--fg-faint);
+      text-transform: uppercase;
+    }
+    .card-body p.note {
+      padding: 0 28px;
+      color: var(--fg-mute);
+      font-size: 13.5px;
+      line-height: 1.6;
+      margin: 18px 0 0;
+      max-width: 70ch;
+    }
+    .wordmark-row {
+      padding: 56px 28px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 160px;
+      border-bottom: 1px solid var(--hairline-2);
+    }
+    .icon-row {
+      padding: 28px;
+      display: flex;
+      align-items: center;
+      gap: 36px;
+      flex-wrap: wrap;
+    }
+    .icon-cell {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+    }
+    .icon-cell .lab {
+      font-family: ui-monospace, "Geist Mono", monospace;
+      font-size: 10.5px;
+      letter-spacing: 0.16em;
+      color: var(--fg-faint);
+      text-transform: uppercase;
+    }
+
+    /* ---- typographic primitives ---- */
+    .wm { line-height: 0.9; }
+    .wm.italic { font-family: "Instrument Serif", "Times New Roman", serif; font-style: italic; font-weight: 400; }
+    .wm.sans { font-family: "Geist", system-ui, sans-serif; font-weight: 500; letter-spacing: -0.04em; }
+    .wm.thin { font-family: "Geist", system-ui, sans-serif; font-weight: 300; letter-spacing: -0.025em; }
+
+    /* footer */
+    .footer {
+      max-width: 1180px;
+      margin: 64px auto 0;
+      padding-top: 32px;
+      border-top: 1px solid var(--hairline-2);
+      color: var(--fg-mute);
+      font-size: 13.5px;
+      line-height: 1.7;
+    }
+    .footer code {
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--hairline);
+      border-radius: 4px;
+      padding: 2px 6px;
+      font-size: 12px;
+      font-family: ui-monospace, monospace;
+    }
+
+    /* ─── icon backgrounds (used in inline SVGs) ─── */
+
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Cadence — wordmark redesign</h1>
+  <p class="lead">
+    Four directions, all built around <em>cadence.</em> as a typographic
+    wordmark. Each card shows the wordmark large (the way it'll sit in your
+    chrome and on the landing page) and the square icon variants Strava will
+    render at 124, 64, and 32 px. Pick a letter and tell me — I'll lock it
+    in across the app and export the icon to PNG for the Strava upload.
+  </p>
+
+
+  <!-- ──────────────── A · EDITORIAL ──────────────── -->
+  <div class="card">
+    <div class="card-head">
+      <h2>A · Editorial — Instrument Serif italic</h2>
+      <span class="label">CADENCE.</span>
+    </div>
+    <div class="card-body">
+      <p class="note">
+        Lowercase italic serif with a confident period. The period is the
+        cadence — a beat. Reads as literary / training journal more than
+        product. Your existing display font, used decisively. Most premium of
+        the four, lowest noise.
+      </p>
+      <div class="wordmark-row">
+        <span class="wm italic" style="font-size: 116px;">cadence<span style="color:#9c5cff">.</span></span>
+      </div>
+      <div class="icon-row">
+        <div class="icon-cell">
+          <svg width="124" height="124" viewBox="0 0 256 256">
+            <rect width="256" height="256" rx="56" fill="#0a0c18"/>
+            <rect x="0.75" y="0.75" width="254.5" height="254.5" rx="55.25" fill="none" stroke="#ffffff" stroke-opacity="0.10" stroke-width="1.5"/>
+            <text x="36" y="190" font-family="Instrument Serif, serif" font-style="italic" font-weight="400" font-size="200" fill="#f0f5f3">c<tspan fill="#9c5cff">.</tspan></text>
+          </svg>
+          <span class="lab">124 PX</span>
+        </div>
+        <div class="icon-cell">
+          <svg width="64" height="64" viewBox="0 0 256 256">
+            <rect width="256" height="256" rx="56" fill="#0a0c18"/>
+            <rect x="0.75" y="0.75" width="254.5" height="254.5" rx="55.25" fill="none" stroke="#ffffff" stroke-opacity="0.10" stroke-width="1.5"/>
+            <text x="36" y="190" font-family="Instrument Serif, serif" font-style="italic" font-weight="400" font-size="200" fill="#f0f5f3">c<tspan fill="#9c5cff">.</tspan></text>
+          </svg>
+          <span class="lab">64 PX</span>
+        </div>
+        <div class="icon-cell">
+          <svg width="32" height="32" viewBox="0 0 256 256">
+            <rect width="256" height="256" rx="56" fill="#0a0c18"/>
+            <text x="36" y="190" font-family="Instrument Serif, serif" font-style="italic" font-weight="400" font-size="200" fill="#f0f5f3">c<tspan fill="#9c5cff">.</tspan></text>
+          </svg>
+          <span class="lab">32 PX</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ──────────────── B · PRODUCT ──────────────── -->
+  <div class="card">
+    <div class="card-head">
+      <h2>B · Product — Geist Sans, tight</h2>
+      <span class="label">CADENCE.</span>
+    </div>
+    <div class="card-body">
+      <p class="note">
+        Modern-product wordmark — Geist Medium, tightly tracked, lowercase,
+        period in the brand violet. The Linear/Vercel/Stripe shelf, but with
+        the period elevated to "rhythm marker" instead of decoration.
+      </p>
+      <div class="wordmark-row">
+        <span class="wm sans" style="font-size: 96px;">cadence<span style="color:#9c5cff">.</span></span>
+      </div>
+      <div class="icon-row">
+        <div class="icon-cell">
+          <svg width="124" height="124" viewBox="0 0 256 256">
+            <defs>
+              <linearGradient id="vio-b" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#7d4ddf"/>
+                <stop offset="100%" stop-color="#5a6dd9"/>
+              </linearGradient>
+            </defs>
+            <rect width="256" height="256" rx="56" fill="url(#vio-b)"/>
+            <rect x="0" y="0" width="256" height="2" rx="1" fill="#ffffff" opacity="0.22"/>
+            <text x="42" y="190" font-family="Geist, system-ui, sans-serif" font-weight="600" font-size="200" letter-spacing="-12" fill="#ffffff">c.</text>
+          </svg>
+          <span class="lab">124 PX</span>
+        </div>
+        <div class="icon-cell">
+          <svg width="64" height="64" viewBox="0 0 256 256">
+            <defs>
+              <linearGradient id="vio-b2" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#7d4ddf"/>
+                <stop offset="100%" stop-color="#5a6dd9"/>
+              </linearGradient>
+            </defs>
+            <rect width="256" height="256" rx="56" fill="url(#vio-b2)"/>
+            <text x="42" y="190" font-family="Geist, system-ui, sans-serif" font-weight="600" font-size="200" letter-spacing="-12" fill="#ffffff">c.</text>
+          </svg>
+          <span class="lab">64 PX</span>
+        </div>
+        <div class="icon-cell">
+          <svg width="32" height="32" viewBox="0 0 256 256">
+            <defs>
+              <linearGradient id="vio-b3" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#7d4ddf"/>
+                <stop offset="100%" stop-color="#5a6dd9"/>
+              </linearGradient>
+            </defs>
+            <rect width="256" height="256" rx="56" fill="url(#vio-b3)"/>
+            <text x="42" y="190" font-family="Geist, system-ui, sans-serif" font-weight="600" font-size="200" letter-spacing="-12" fill="#ffffff">c.</text>
+          </svg>
+          <span class="lab">32 PX</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ──────────────── C · ATMOSPHERIC ──────────────── -->
+  <div class="card">
+    <div class="card-head">
+      <h2>C · Atmospheric — Italic serif on aurora</h2>
+      <span class="label">CADENCE.</span>
+    </div>
+    <div class="card-body">
+      <p class="note">
+        A's editorial italic, but the icon sits on a frozen aurora gradient
+        — same DNA as the landing page's hero shader. The wordmark stays
+        austere on near-black; only the icon carries the color. Distinctive
+        in the Strava grid.
+      </p>
+      <div class="wordmark-row">
+        <span class="wm italic" style="font-size: 116px;">cadence<span style="color:#9c5cff">.</span></span>
+      </div>
+      <div class="icon-row">
+        <div class="icon-cell">
+          <svg width="124" height="124" viewBox="0 0 256 256">
+            <defs>
+              <radialGradient id="aur-c1" cx="35%" cy="35%" r="80%">
+                <stop offset="0%" stop-color="#9c5cff" stop-opacity="0.95"/>
+                <stop offset="38%" stop-color="#5a6dd9" stop-opacity="0.85"/>
+                <stop offset="72%" stop-color="#3a8aaa" stop-opacity="0.55"/>
+                <stop offset="100%" stop-color="#0a0c18" stop-opacity="1"/>
+              </radialGradient>
+              <radialGradient id="bloom-c1" cx="70%" cy="78%" r="50%">
+                <stop offset="0%" stop-color="#d066ff" stop-opacity="0.40"/>
+                <stop offset="100%" stop-color="#d066ff" stop-opacity="0"/>
+              </radialGradient>
+            </defs>
+            <rect width="256" height="256" rx="56" fill="#0a0c18"/>
+            <rect width="256" height="256" rx="56" fill="url(#aur-c1)"/>
+            <rect width="256" height="256" rx="56" fill="url(#bloom-c1)"/>
+            <text x="36" y="190" font-family="Instrument Serif, serif" font-style="italic" font-weight="400" font-size="200" fill="#ffffff">c.</text>
+          </svg>
+          <span class="lab">124 PX</span>
+        </div>
+        <div class="icon-cell">
+          <svg width="64" height="64" viewBox="0 0 256 256">
+            <defs>
+              <radialGradient id="aur-c2" cx="35%" cy="35%" r="80%">
+                <stop offset="0%" stop-color="#9c5cff" stop-opacity="0.95"/>
+                <stop offset="38%" stop-color="#5a6dd9" stop-opacity="0.85"/>
+                <stop offset="72%" stop-color="#3a8aaa" stop-opacity="0.55"/>
+                <stop offset="100%" stop-color="#0a0c18" stop-opacity="1"/>
+              </radialGradient>
+              <radialGradient id="bloom-c2" cx="70%" cy="78%" r="50%">
+                <stop offset="0%" stop-color="#d066ff" stop-opacity="0.40"/>
+                <stop offset="100%" stop-color="#d066ff" stop-opacity="0"/>
+              </radialGradient>
+            </defs>
+            <rect width="256" height="256" rx="56" fill="#0a0c18"/>
+            <rect width="256" height="256" rx="56" fill="url(#aur-c2)"/>
+            <rect width="256" height="256" rx="56" fill="url(#bloom-c2)"/>
+            <text x="36" y="190" font-family="Instrument Serif, serif" font-style="italic" font-weight="400" font-size="200" fill="#ffffff">c.</text>
+          </svg>
+          <span class="lab">64 PX</span>
+        </div>
+        <div class="icon-cell">
+          <svg width="32" height="32" viewBox="0 0 256 256">
+            <defs>
+              <radialGradient id="aur-c3" cx="35%" cy="35%" r="80%">
+                <stop offset="0%" stop-color="#9c5cff" stop-opacity="0.95"/>
+                <stop offset="38%" stop-color="#5a6dd9" stop-opacity="0.85"/>
+                <stop offset="72%" stop-color="#3a8aaa" stop-opacity="0.55"/>
+                <stop offset="100%" stop-color="#0a0c18" stop-opacity="1"/>
+              </radialGradient>
+            </defs>
+            <rect width="256" height="256" rx="56" fill="#0a0c18"/>
+            <rect width="256" height="256" rx="56" fill="url(#aur-c3)"/>
+            <text x="36" y="190" font-family="Instrument Serif, serif" font-style="italic" font-weight="400" font-size="200" fill="#ffffff">c.</text>
+          </svg>
+          <span class="lab">32 PX</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ──────────────── D · STATEMENT ──────────────── -->
+  <div class="card">
+    <div class="card-head">
+      <h2>D · Statement — Sans + oversized italic period</h2>
+      <span class="label">CADENCE.</span>
+    </div>
+    <div class="card-body">
+      <p class="note">
+        Hybrid. The body of the word stays in light Geist sans; the period is
+        a much larger, lower-baseline italic serif "." in violet. Visually,
+        the period <em>is</em> the brand — a beat-marker. Most distinctive at
+        large sizes; falls back to "c." in the icon.
+      </p>
+      <div class="wordmark-row">
+        <span class="wm thin" style="font-size: 96px;">cadence</span><span class="wm italic" style="font-size: 188px; line-height: 0; color:#9c5cff; vertical-align: -0.06em; margin-left: -8px;">.</span>
+      </div>
+      <div class="icon-row">
+        <div class="icon-cell">
+          <svg width="124" height="124" viewBox="0 0 256 256">
+            <rect width="256" height="256" rx="56" fill="#0d0e1c"/>
+            <rect x="0.75" y="0.75" width="254.5" height="254.5" rx="55.25" fill="none" stroke="#ffffff" stroke-opacity="0.08" stroke-width="1.5"/>
+            <text x="42" y="172" font-family="Geist, system-ui, sans-serif" font-weight="300" font-size="170" fill="#f0f5f3" letter-spacing="-6">c</text>
+            <text x="138" y="216" font-family="Instrument Serif, serif" font-style="italic" font-weight="400" font-size="280" fill="#9c5cff">.</text>
+          </svg>
+          <span class="lab">124 PX</span>
+        </div>
+        <div class="icon-cell">
+          <svg width="64" height="64" viewBox="0 0 256 256">
+            <rect width="256" height="256" rx="56" fill="#0d0e1c"/>
+            <rect x="0.75" y="0.75" width="254.5" height="254.5" rx="55.25" fill="none" stroke="#ffffff" stroke-opacity="0.08" stroke-width="1.5"/>
+            <text x="42" y="172" font-family="Geist, system-ui, sans-serif" font-weight="300" font-size="170" fill="#f0f5f3" letter-spacing="-6">c</text>
+            <text x="138" y="216" font-family="Instrument Serif, serif" font-style="italic" font-weight="400" font-size="280" fill="#9c5cff">.</text>
+          </svg>
+          <span class="lab">64 PX</span>
+        </div>
+        <div class="icon-cell">
+          <svg width="32" height="32" viewBox="0 0 256 256">
+            <rect width="256" height="256" rx="56" fill="#0d0e1c"/>
+            <text x="42" y="172" font-family="Geist, system-ui, sans-serif" font-weight="300" font-size="170" fill="#f0f5f3" letter-spacing="-6">c</text>
+            <text x="138" y="216" font-family="Instrument Serif, serif" font-style="italic" font-weight="400" font-size="280" fill="#9c5cff">.</text>
+          </svg>
+          <span class="lab">32 PX</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+  <div class="footer">
+    <p>
+      Files live at <code>apps/web/public/branding/preview.html</code>. The
+      old metronome SVGs (a-violet, b-navy, c-aurora, d-glow) are still in
+      that folder but unused — I'll clean them up once you pick.
+    </p>
+    <p>
+      Once you tell me which letter you want, I'll: (1) lock the wordmark
+      treatment in across the app chrome (replacing the BrandMark + WordMark
+      components), (2) export the icon variant to a 512×512 PNG for the
+      Strava upload, and (3) update <code>docs/CHANGELOG.md</code> with the
+      brand decision.
+    </p>
+  </div>
+</div>
+</body>
+</html>
