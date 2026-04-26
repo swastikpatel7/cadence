@@ -43,6 +43,12 @@ COPY --from=builder /out/api /app/api
 COPY --from=builder /go/bin/goose /app/goose
 COPY --from=builder /workspace/apps/api/internal/db/migrations /app/migrations
 
+# 6. Migration wrapper. Railway's preDeployCommand exec's its argv directly
+#    without going through a shell, so `$DATABASE_URL` in railway.toml never
+#    gets expanded. Sh expansion happens inside this script via the shebang.
+RUN printf '#!/bin/sh\nset -e\nexec /app/goose -dir /app/migrations postgres "$DATABASE_URL" up\n' > /app/migrate.sh \
+ && chmod +x /app/migrate.sh
+
 ENV PORT_API=8080
 EXPOSE 8080
 CMD ["/app/api"]
