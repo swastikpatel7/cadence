@@ -1,0 +1,180 @@
+@import "tailwindcss";
+
+/* ─────────────────────────────────────────────────────────────────
+   Cadence — design tokens (Tailwind v4 @theme).
+   Aesthetic: editorial dark, drifting aurora, glass-morphism.
+   Three palette voices: violet (hero), marble (mid/bottom),
+   strava (connect). All anchor to the same neutral spine so
+   surfaces stay coherent across sections.
+   ───────────────────────────────────────────────────────────────── */
+
+@theme {
+  /* Spacing base. */
+  --spacing: 0.25rem;
+
+  /* Neutral spine — deep cool navy, NOT pure black. Navy reads
+     "tech / training journal" instead of "default dark theme". */
+  --color-bg-base:     oklch(0.10 0.02 270);
+  --color-bg-deep:     oklch(0.07 0.02 270);
+  --color-bg-surface:  oklch(0.14 0.02 270);
+  --color-bg-elevated: oklch(0.18 0.02 270);
+  --color-bg-overlay:  oklch(0.22 0.02 270);
+
+  /* Foreground — cool whites with the faintest mint cast so highlight
+     text feels "alive" against the navy. */
+  --color-fg-primary:   oklch(0.97 0.01 180);
+  --color-fg-secondary: oklch(0.78 0.01 200);
+  --color-fg-muted:     oklch(0.58 0.01 200);
+  --color-fg-faint:     oklch(0.42 0.01 200);
+  --color-fg-disabled:  oklch(0.32 0.01 200);
+
+  /* Borders — almost-invisible hairlines that read as "edge of glass". */
+  --color-border-hairline: oklch(1 0 0 / 0.06);
+  --color-border-subtle:   oklch(1 0 0 / 0.10);
+  --color-border-default:  oklch(1 0 0 / 0.16);
+  --color-border-strong:   oklch(1 0 0 / 0.28);
+
+  /* Aurora stops — violet voice (hero / sign-in / sign-up). */
+  --color-aurora-violet-1: oklch(0.55 0.27 295);
+  --color-aurora-violet-2: oklch(0.62 0.22 265);
+  --color-aurora-violet-3: oklch(0.70 0.16 220);
+  --color-aurora-violet-4: oklch(0.65 0.24 330);
+
+  /* Aurora stops — marble voice (mid / bottom CTA section). */
+  --color-aurora-marble-1: oklch(0.78 0.18 105);
+  --color-aurora-marble-2: oklch(0.55 0.20 230);
+  --color-aurora-marble-3: oklch(0.50 0.22 280);
+  --color-aurora-marble-4: oklch(0.70 0.16 195);
+
+  /* Aurora stops — Strava voice (connect page). */
+  --color-aurora-strava-1: oklch(0.72 0.22 45);
+  --color-aurora-strava-2: oklch(0.55 0.20 30);
+  --color-aurora-strava-3: oklch(0.45 0.18 280);
+  --color-aurora-strava-4: oklch(0.62 0.18 350);
+
+  /* Strava brand orange. */
+  --color-strava: oklch(0.68 0.21 45);
+  --color-strava-deep: oklch(0.58 0.22 38);
+
+  /* Status. */
+  --color-success: oklch(0.78 0.20 150);
+  --color-warning: oklch(0.80 0.16 80);
+  --color-danger:  oklch(0.66 0.22 25);
+
+  /* Sport colors — used for activity chips later. */
+  --color-sport-run:      oklch(0.74 0.18 145);
+  --color-sport-ride:     oklch(0.68 0.18 240);
+  --color-sport-swim:     oklch(0.74 0.14 200);
+  --color-sport-strength: oklch(0.66 0.18 290);
+
+  /* Type — Geist via next/font sets the sans/mono vars,
+     Instrument Serif sets the display var. */
+  --font-sans:    var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono:    var(--font-geist-mono), ui-monospace, monospace;
+  --font-display: var(--font-instrument-serif), ui-serif, Georgia, serif;
+
+  /* Motion. */
+  --ease-out-expo:    cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out-soft: cubic-bezier(0.65, 0, 0.35, 1);
+  --duration-quick:   150ms;
+  --duration-base:    240ms;
+  --duration-slow:    480ms;
+  --duration-slower:  900ms;
+
+  /* Radii — soft on big surfaces, full on chips. */
+  --radius-card:    1.25rem;
+  --radius-card-lg: 1.75rem;
+  --radius-pill:    9999px;
+}
+
+/* ─────────────────────────────────────────────────────────────────
+   Base reset.
+   ───────────────────────────────────────────────────────────────── */
+@layer base {
+  html {
+    color-scheme: dark;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    background-color: var(--color-bg-deep);
+    color: var(--color-fg-primary);
+    font-family: var(--font-sans);
+    font-feature-settings: "ss01", "cv01", "cv02";
+    overflow-x: hidden;
+  }
+
+  ::selection {
+    background-color: oklch(0.62 0.22 290 / 0.35);
+    color: var(--color-fg-primary);
+  }
+
+  .num {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.01em;
+  }
+
+  /* Display class — used for the editorial italic headlines. */
+  .display {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-weight: 400;
+    letter-spacing: -0.02em;
+    line-height: 0.92;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────────
+   Aurora animation primitives.
+   The aurora component composes 4 blurred radial blobs animated on
+   prime-second periods so the field never visibly loops.
+   ───────────────────────────────────────────────────────────────── */
+@keyframes aurora-drift-a {
+  0%   { transform: translate3d(-12%, -8%, 0)  scale(1.05); }
+  50%  { transform: translate3d( 18%, 12%, 0)  scale(1.20); }
+  100% { transform: translate3d(-12%, -8%, 0)  scale(1.05); }
+}
+@keyframes aurora-drift-b {
+  0%   { transform: translate3d( 14%,  6%, 0)  scale(1.10); }
+  50%  { transform: translate3d(-16%, -10%, 0) scale(1.25); }
+  100% { transform: translate3d( 14%,  6%, 0)  scale(1.10); }
+}
+@keyframes aurora-drift-c {
+  0%   { transform: translate3d( -8%, 12%, 0)  scale(1.00); }
+  50%  { transform: translate3d( 12%, -6%, 0)  scale(1.18); }
+  100% { transform: translate3d( -8%, 12%, 0)  scale(1.00); }
+}
+@keyframes aurora-drift-d {
+  0%   { transform: translate3d( 10%, -14%, 0) scale(1.15); }
+  50%  { transform: translate3d(-14%,  10%, 0) scale(0.95); }
+  100% { transform: translate3d( 10%, -14%, 0) scale(1.15); }
+}
+
+/* Hero text reveal — staggered via animation-delay on children. */
+@keyframes rise-in {
+  0%   { opacity: 0; transform: translateY(14px); filter: blur(6px); }
+  100% { opacity: 1; transform: translateY(0);    filter: blur(0); }
+}
+
+@keyframes fade-in {
+  0%   { opacity: 0; }
+  100% { opacity: 1; }
+}
+
+/* Subtle shimmer for "Available now" status dot. */
+@keyframes pulse-dot {
+  0%, 100% { box-shadow: 0 0 0 0 oklch(0.78 0.20 150 / 0.55); }
+  50%      { box-shadow: 0 0 0 6px oklch(0.78 0.20 150 / 0); }
+}
+
+/* Reduce motion if requested. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

@@ -1,0 +1,22 @@
+# Railway service config for `cadence-api`.
+#
+# In Railway dashboard:
+#   - Source: this repo
+#   - Root Directory: / (repo root)
+#   - Config Path: apps/api/railway.toml
+#
+# This file points Railway at the api Dockerfile and runs goose against
+# DATABASE_URL before each deploy. Migrations are idempotent — only new
+# .sql files get applied.
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "apps/api/Dockerfile"
+
+[deploy]
+preDeployCommand = "/app/goose -dir /app/migrations postgres \"$DATABASE_URL\" up"
+startCommand = "/app/api"
+healthcheckPath = "/readyz"
+healthcheckTimeout = 30
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 5
