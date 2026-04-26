@@ -20,6 +20,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/riverdriver/riverpgxv5"
+	"github.com/riverqueue/river/rivermigrate"
 	"golang.org/x/oauth2"
 
 	"github.com/swastikpatel7/cadence/apps/api/internal/auth"
@@ -74,6 +75,11 @@ func InitDependencies(ctx context.Context) (*Dependencies, error) {
 	pool, err := newPostgresPool(ctx, cfg.DatabaseURL)
 	if err != nil {
 		return nil, fmt.Errorf("system: postgres: %w", err)
+	}
+
+	if err := migrateRiverSchema(ctx, pool); err != nil {
+		pool.Close()
+		return nil, fmt.Errorf("system: river migrate: %w", err)
 	}
 
 	queries := dbgen.New(pool)
@@ -197,6 +203,21 @@ func newTokenCipher(b64Key string) (*pkgcrypto.TokenCipher, error) {
 		return nil, fmt.Errorf("decode encryption key: %w", err)
 	}
 	return pkgcrypto.NewTokenCipher(keyBytes)
+}
+
+// migrateRiverSchema applies River's internal migrations (river_job,
+// river_queue, river_leader, river_client, river_migration). Idempotent:
+// River tracks applied versions in river_migration, so reruns are no-ops.
+// Goose owns the application schema only; River owns its own.
+func migrateRiverSchema(ctx context.Context, pool *pgxpool.Pool) error {
+	migrator, err := rivermigrate.New(riverpgxv5.New(pool), nil)
+	if err != nil {
+		return fmt.Errorf("new migrator: %w", err)
+	}
+	if _, err := migrator.Migrate(ctx, rivermigrate.DirectionUp, nil); err != nil {
+		return fmt.Errorf("apply: %w", err)
+	}
+	return nil
 }
 
 func newPostgresPool(ctx context.Context, url string) (*pgxpool.Pool, error) {
