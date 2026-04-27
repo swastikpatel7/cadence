@@ -1,8 +1,12 @@
+import { auth } from '@clerk/nextjs/server';
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
+import { ConnectStravaButton } from '@/components/connect/connect-strava-button';
 import { Aurora } from '@/components/ui/aurora';
-import { ArrowRight, Button } from '@/components/ui/button';
 import { GlassCard } from '@/components/ui/glass-card';
 import { StravaMark } from '@/components/ui/strava-mark';
+import type { SyncStatus } from '@/lib/api-client';
+import { serverFetch } from '@/lib/api-server';
 
 export const metadata = {
   title: 'Connect Strava — Cadence',
@@ -12,12 +16,28 @@ const SCOPES = [
   ['Read activities, splits, GPS streams', 'activity:read_all'],
   ['Backfill 90 days of history', 'one-time'],
   ['Stream new workouts within 60 seconds', 'webhook'],
-  ['Revoke any time from your profile', 'reversible'],
+  ['Revoke any time from settings', 'reversible'],
 ];
 
-export default function ConnectStravaPage() {
+export default async function ConnectStravaPage() {
+  const { userId } = await auth();
+  if (!userId) redirect('/sign-in');
+
+  // Already connected? Skip the marketing pitch and go straight to /home.
+  // Fetch failures fall through to render (the user can still try); the
+  // redirect itself must run *outside* the try so Next.js's NEXT_REDIRECT
+  // sentinel isn't swallowed by the catch.
+  let connected = false;
+  try {
+    const status = await serverFetch<SyncStatus>('/v1/me/sync');
+    connected = status.connection?.connected ?? false;
+  } catch {
+    // fall through to render
+  }
+  if (connected) redirect('/home');
+
   return (
-    <section className="relative min-h-[100svh] overflow-hidden">
+    <section className="relative min-h-[calc(100svh-4rem)] overflow-hidden">
       <Aurora
         variant="strava"
         intensity="normal"
@@ -26,12 +46,12 @@ export default function ConnectStravaPage() {
         scale={1.15}
       />
 
-      <div className="relative z-20 mx-auto flex min-h-[100svh] max-w-[1180px] flex-col items-center justify-center px-6 pb-12 pt-28">
+      <div className="relative z-20 mx-auto flex min-h-[calc(100svh-4rem)] max-w-[1180px] flex-col items-center justify-center px-6 pb-12 pt-12">
         <Link
           href="/home"
           className="mb-10 inline-flex items-center gap-1.5 self-start rounded-full border border-white/10 bg-black/30 px-3.5 py-1.5 text-[12.5px] text-white/70 backdrop-blur-md transition-colors hover:bg-white/[0.06] hover:text-white"
         >
-          <span aria-hidden>←</span> Back
+          <span aria-hidden>←</span> Back to Today
         </Link>
 
         <GlassCard className="w-full max-w-[560px] px-8 py-9 md:px-10 md:py-11">
@@ -56,9 +76,9 @@ export default function ConnectStravaPage() {
           </h1>
 
           <p className="mt-5 text-[15.5px] leading-[1.55] text-white/65">
-            Cadence will read your activities, splits, GPS, heart rate, and
-            power so it can correlate training load with recovery. We don't
-            post on your behalf, follow anyone, or write to your account.
+            Cadence reads activities, splits, GPS, heart rate, and power — so it
+            can correlate training load with recovery. We never post on your
+            behalf, follow anyone, or write to your account.
           </p>
 
           <ul className="mt-8 flex flex-col gap-3">
@@ -74,7 +94,13 @@ export default function ConnectStravaPage() {
                       'inset 0 0 0 1px oklch(0.78 0.20 150 / 0.35)',
                   }}
                 >
-                  <svg width="11" height="11" viewBox="0 0 12 12">
+                  <svg
+                    width="11"
+                    height="11"
+                    viewBox="0 0 12 12"
+                    aria-hidden="true"
+                    role="presentation"
+                  >
                     <path
                       d="M2.5 6.5 5 9l4.5-5.5"
                       fill="none"
@@ -96,11 +122,7 @@ export default function ConnectStravaPage() {
           </ul>
 
           <div className="mt-9">
-            <Button href="/settings" variant="strava" size="lg" className="w-full">
-              <StravaMark size={18} />
-              Continue with Strava
-              <ArrowRight />
-            </Button>
+            <ConnectStravaButton />
           </div>
 
           <p className="mt-6 border-t border-white/10 pt-5 text-center font-mono text-[11px] tracking-[0.16em] text-white/40">
@@ -109,7 +131,14 @@ export default function ConnectStravaPage() {
         </GlassCard>
 
         <p className="mt-10 text-center text-[12.5px] text-white/40">
-          Not ready yet? <Link href="/home" className="text-white/70 underline-offset-4 hover:text-white">Skip for now</Link> — you can connect from your profile.
+          Not ready yet?{' '}
+          <Link
+            href="/home"
+            className="text-white/70 underline-offset-4 hover:text-white"
+          >
+            Skip for now
+          </Link>{' '}
+          — you can connect from settings.
         </p>
       </div>
     </section>

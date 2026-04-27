@@ -12,6 +12,10 @@ import (
 
 type Querier interface {
 	BreakdownActivitiesBySport(ctx context.Context, userID uuid.UUID) ([]BreakdownActivitiesBySportRow, error)
+	// Companion to UpdateGoalPartial: explicitly NULLs the optional fields
+	// the patch body sent as JSON null. The handler runs both queries in a
+	// single transaction.
+	ClearGoalNullable(ctx context.Context, arg ClearGoalNullableParams) error
 	// Worker calls this on terminal failure (e.g. 401 after refresh attempt).
 	ClearSyncStartedFailure(ctx context.Context, arg ClearSyncStartedFailureParams) error
 	// Worker calls this when the sync loop finishes cleanly.
@@ -25,13 +29,46 @@ type Querier interface {
 	// encrypted so accidental re-connect overlap doesn't lose state. The
 	// /v1/me/sync POST checks last_error and refuses to enqueue if set.
 	DisconnectAccount(ctx context.Context, arg DisconnectAccountParams) error
+	// Used by the session-detail endpoint to find the matched activity for
+	// a calendar date. Picks the longest run for that day if multiple exist.
+	GetActivityForDate(ctx context.Context, arg GetActivityForDateParams) (GetActivityForDateRow, error)
 	GetConnectedAccount(ctx context.Context, arg GetConnectedAccountParams) (ConnectedAccount, error)
+	// The "live" plan is the one with superseded_by IS NULL. Index
+	// `coach_plans_user_current` is partial-on-that-condition.
+	GetCurrentPlanByUserID(ctx context.Context, userID uuid.UUID) (CoachPlan, error)
+	GetGoalByUserID(ctx context.Context, userID uuid.UUID) (UserGoal, error)
+	// Used by the session-detail handler to read the cached micro-summary.
+	GetInsightForActivity(ctx context.Context, arg GetInsightForActivityParams) (CoachInsight, error)
+	// Backs GET /v1/me/baseline. Index `baselines_user_recent` covers this.
+	GetLatestBaselineByUserID(ctx context.Context, userID uuid.UUID) (Baseline, error)
+	// Used by the heatmap endpoint to get the current plan that overlaps
+	// [window_start, window_end]. We pull the current plan only — the
+	// frontend stitches per-cell from its `plan` JSONB.
+	GetPlanWindow(ctx context.Context, arg GetPlanWindowParams) ([]CoachPlan, error)
 	GetUserByClerkID(ctx context.Context, clerkUserID string) (User, error)
 	GetUserByEmail(ctx context.Context, lower string) (User, error)
 	GetUserByID(ctx context.Context, id uuid.UUID) (User, error)
 	GetUserProfile(ctx context.Context, userID uuid.UUID) (UsersProfile, error)
+	// Inserted by BaselineComputeWorker after the Opus 4.7 narrative call.
+	// avg_pace_at_distance is a JSONB blob keyed by distance-int → sec/km.
+	InsertBaseline(ctx context.Context, arg InsertBaselineParams) (Baseline, error)
+	// Used by SessionMicroSummaryWorker. Idempotent on (activity_id, kind).
+	InsertInsight(ctx context.Context, arg InsertInsightParams) (CoachInsight, error)
+	// Used by InitialPlanWorker (generation_kind='initial_8wk') and
+	// WeeklyRefreshWorker (generation_kind='weekly_refresh'). plan jsonb is
+	// the structured {weeks:[{week_index,total_km,sessions:[...]}]} blob.
+	InsertPlan(ctx context.Context, arg InsertPlanParams) (CoachPlan, error)
+	// Heatmap join: every running activity in [window_start, window_end].
+	// Sport-type filter is loose (Run + Trail Run) for the v1 running-only
+	// product (insights.md §16 pins non-running out of scope).
+	ListActivitiesInWindow(ctx context.Context, arg ListActivitiesInWindowParams) ([]ListActivitiesInWindowRow, error)
+	// For the audit / history view (deferred to v2; cheap to ship now).
+	ListBaselinesByUserID(ctx context.Context, arg ListBaselinesByUserIDParams) ([]Baseline, error)
 	// Settings page "last N" preview.
 	ListRecentActivitiesByUser(ctx context.Context, arg ListRecentActivitiesByUserParams) ([]ListRecentActivitiesByUserRow, error)
+	// Called after a successful WeeklyRefreshWorker INSERT to chain the
+	// prior current plan to the new one.
+	MarkPlanSuperseded(ctx context.Context, arg MarkPlanSupersededParams) error
 	SetSyncProgress(ctx context.Context, arg SetSyncProgressParams) error
 	// Locks the connection into "syncing" state. POST /v1/me/sync returns
 	// 409 if sync_started_at IS NOT NULL.
@@ -40,6 +77,12 @@ type Querier interface {
 	// we re-encrypt the new pair and persist. ID-keyed because the worker
 	// already has the row in hand.
 	UpdateConnectedAccountTokens(ctx context.Context, arg UpdateConnectedAccountTokensParams) error
+	// Used by PATCH /v1/me/goal. COALESCE pattern keeps untouched columns.
+	// Pass NULLs for fields you do NOT want to change. Explicit-clear of the
+	// nullable columns (target_distance_km, target_pace_sec_per_km, race_date)
+	// is impossible through this query alone; the handler runs ClearGoalNullable
+	// in the same transaction when it sees JSON null in the patch body.
+	UpdateGoalPartial(ctx context.Context, arg UpdateGoalPartialParams) (UserGoal, error)
 	// Idempotent on (source, source_id) so re-syncing the same range is safe.
 	// We project a handful of summary fields into named columns and dump the
 	// full DetailedActivity JSON into `raw` so future code can derive other
@@ -50,6 +93,9 @@ type Querier interface {
 	// so re-connecting the same user to a Strava account just refreshes the
 	// token blob and clears any prior error.
 	UpsertConnectedAccount(ctx context.Context, arg UpsertConnectedAccountParams) (ConnectedAccount, error)
+	// Used by the onboarding-complete handler. Idempotent on user_id so a
+	// retry of POST /v1/me/onboarding/complete doesn't double-insert.
+	UpsertGoal(ctx context.Context, arg UpsertGoalParams) (UserGoal, error)
 	// Idempotent upsert keyed on clerk_user_id. Used by the Clerk webhook
 	// handler to keep our users table in sync with Clerk's source of truth.
 	UpsertUserByClerkID(ctx context.Context, arg UpsertUserByClerkIDParams) (User, error)

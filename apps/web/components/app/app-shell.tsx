@@ -1,6 +1,7 @@
 import { UserButton } from '@clerk/nextjs';
 import Link from 'next/link';
 import { Suspense } from 'react';
+import { AppShellNav } from '@/components/app/app-shell-nav';
 import { StravaStatusPill } from '@/components/app/strava-status-pill';
 import { WordMark } from '@/components/ui/brand-mark';
 
@@ -8,6 +9,11 @@ import { WordMark } from '@/components/ui/brand-mark';
  * Signed-in chrome. Quieter than the marketing nav: a single rail at the top
  * of the viewport, no aurora behind, the deep navy bg shows through. The
  * nav links are real app destinations (will fill in as features land).
+ *
+ * On `/onboarding/*` routes the nav rail is suppressed (via
+ * `<AppShellNav>` reading `usePathname()`) — the wizard owns its own
+ * progress chrome and shouldn't tempt the user to bounce out mid-flow
+ * (insights.md §4).
  */
 export function AppShell({ children }: { children: React.ReactNode }) {
   return (
@@ -21,14 +27,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <WordMark size={17} className="text-white/95" />
           </Link>
 
-          <nav className="hidden items-center gap-1 md:flex" aria-label="App">
-            <AppNavLink href="/home" active>
-              Today
-            </AppNavLink>
-            <AppNavLink href="/home#activities">Activities</AppNavLink>
-            <AppNavLink href="/home#coach">Coach</AppNavLink>
-            <AppNavLink href="/settings">Settings</AppNavLink>
-          </nav>
+          <AppShellNav />
 
           <div className="flex items-center gap-3">
             <Suspense fallback={null}>
@@ -49,25 +48,3 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   );
 }
 
-function AppNavLink({
-  href,
-  active,
-  children,
-}: {
-  href: string;
-  active?: boolean;
-  children: React.ReactNode;
-}) {
-  return (
-    <Link
-      href={href}
-      className={
-        active
-          ? 'rounded-full border border-white/10 bg-white/[0.06] px-3.5 py-1.5 text-[13px] text-white'
-          : 'rounded-full px-3.5 py-1.5 text-[13px] text-white/55 transition-colors hover:bg-white/[0.03] hover:text-white'
-      }
-    >
-      {children}
-    </Link>
-  );
-}

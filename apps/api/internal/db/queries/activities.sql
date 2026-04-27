@@ -50,3 +50,31 @@ FROM activities
 WHERE user_id = $1 AND deleted_at IS NULL
 GROUP BY sport_type
 ORDER BY total DESC;
+
+-- name: ListActivitiesInWindow :many
+-- Heatmap join: every running activity in [window_start, window_end].
+-- Sport-type filter is loose (Run + Trail Run) for the v1 running-only
+-- product (insights.md §16 pins non-running out of scope).
+SELECT id, source, source_id, sport_type, start_time,
+       distance_meters, duration_seconds, avg_heart_rate
+FROM activities
+WHERE user_id = $1
+  AND deleted_at IS NULL
+  AND sport_type IN ('Run', 'TrailRun')
+  AND start_time >= $2
+  AND start_time <  $3
+ORDER BY start_time ASC;
+
+-- name: GetActivityForDate :one
+-- Used by the session-detail endpoint to find the matched activity for
+-- a calendar date. Picks the longest run for that day if multiple exist.
+SELECT id, source, source_id, sport_type, start_time,
+       distance_meters, duration_seconds, avg_heart_rate
+FROM activities
+WHERE user_id = $1
+  AND deleted_at IS NULL
+  AND sport_type IN ('Run', 'TrailRun')
+  AND start_time >= $2
+  AND start_time <  ($2::date + 1)
+ORDER BY distance_meters DESC NULLS LAST
+LIMIT 1;

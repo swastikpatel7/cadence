@@ -58,6 +58,114 @@ func (q *Queries) CountActivitiesByUser(ctx context.Context, userID uuid.UUID) (
 	return total, err
 }
 
+const getActivityForDate = `-- name: GetActivityForDate :one
+SELECT id, source, source_id, sport_type, start_time,
+       distance_meters, duration_seconds, avg_heart_rate
+FROM activities
+WHERE user_id = $1
+  AND deleted_at IS NULL
+  AND sport_type IN ('Run', 'TrailRun')
+  AND start_time >= $2
+  AND start_time <  ($2::date + 1)
+ORDER BY distance_meters DESC NULLS LAST
+LIMIT 1
+`
+
+type GetActivityForDateParams struct {
+	UserID    uuid.UUID
+	StartTime pgtype.Timestamptz
+}
+
+type GetActivityForDateRow struct {
+	ID              uuid.UUID
+	Source          string
+	SourceID        string
+	SportType       string
+	StartTime       pgtype.Timestamptz
+	DistanceMeters  pgtype.Numeric
+	DurationSeconds int32
+	AvgHeartRate    *int32
+}
+
+// Used by the session-detail endpoint to find the matched activity for
+// a calendar date. Picks the longest run for that day if multiple exist.
+func (q *Queries) GetActivityForDate(ctx context.Context, arg GetActivityForDateParams) (GetActivityForDateRow, error) {
+	row := q.db.QueryRow(ctx, getActivityForDate, arg.UserID, arg.StartTime)
+	var i GetActivityForDateRow
+	err := row.Scan(
+		&i.ID,
+		&i.Source,
+		&i.SourceID,
+		&i.SportType,
+		&i.StartTime,
+		&i.DistanceMeters,
+		&i.DurationSeconds,
+		&i.AvgHeartRate,
+	)
+	return i, err
+}
+
+const listActivitiesInWindow = `-- name: ListActivitiesInWindow :many
+SELECT id, source, source_id, sport_type, start_time,
+       distance_meters, duration_seconds, avg_heart_rate
+FROM activities
+WHERE user_id = $1
+  AND deleted_at IS NULL
+  AND sport_type IN ('Run', 'TrailRun')
+  AND start_time >= $2
+  AND start_time <  $3
+ORDER BY start_time ASC
+`
+
+type ListActivitiesInWindowParams struct {
+	UserID      uuid.UUID
+	StartTime   pgtype.Timestamptz
+	StartTime_2 pgtype.Timestamptz
+}
+
+type ListActivitiesInWindowRow struct {
+	ID              uuid.UUID
+	Source          string
+	SourceID        string
+	SportType       string
+	StartTime       pgtype.Timestamptz
+	DistanceMeters  pgtype.Numeric
+	DurationSeconds int32
+	AvgHeartRate    *int32
+}
+
+// Heatmap join: every running activity in [window_start, window_end].
+// Sport-type filter is loose (Run + Trail Run) for the v1 running-only
+// product (insights.md §16 pins non-running out of scope).
+func (q *Queries) ListActivitiesInWindow(ctx context.Context, arg ListActivitiesInWindowParams) ([]ListActivitiesInWindowRow, error) {
+	rows, err := q.db.Query(ctx, listActivitiesInWindow, arg.UserID, arg.StartTime, arg.StartTime_2)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListActivitiesInWindowRow{}
+	for rows.Next() {
+		var i ListActivitiesInWindowRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Source,
+			&i.SourceID,
+			&i.SportType,
+			&i.StartTime,
+			&i.DistanceMeters,
+			&i.DurationSeconds,
+			&i.AvgHeartRate,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listRecentActivitiesByUser = `-- name: ListRecentActivitiesByUser :many
 SELECT id, name, sport_type, start_time, distance_meters
 FROM activities

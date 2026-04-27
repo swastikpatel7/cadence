@@ -14,10 +14,16 @@ import (
 	"github.com/danielgtaylor/huma/v2/adapters/humachi"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/cors"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/riverqueue/river"
 
 	"github.com/swastikpatel7/cadence/apps/api/internal/auth"
+	"github.com/swastikpatel7/cadence/apps/api/internal/baseline"
 	"github.com/swastikpatel7/cadence/apps/api/internal/config"
 	"github.com/swastikpatel7/cadence/apps/api/internal/connections"
+	"github.com/swastikpatel7/cadence/apps/api/internal/onboarding"
+	"github.com/swastikpatel7/cadence/apps/api/internal/plan"
 	"github.com/swastikpatel7/cadence/apps/api/internal/server/handlers"
 	mw "github.com/swastikpatel7/cadence/apps/api/internal/server/middleware"
 	dbgen "github.com/swastikpatel7/cadence/pkg/db/generated"
@@ -34,6 +40,8 @@ type Deps struct {
 	WebhookSecret string
 	Connections   *connections.Service
 	WebBaseURL    string
+	DB            *pgxpool.Pool
+	River         *river.Client[pgx.Tx]
 }
 
 // New builds the *http.Server. Caller is responsible for ListenAndServe
@@ -88,6 +96,36 @@ func New(d Deps) (*http.Server, error) {
 			connections.Register(api, authed, connections.HandlerDeps{
 				Service:    d.Connections,
 				WebBaseURL: d.WebBaseURL,
+			})
+		}
+
+		// Onboarding / baseline / plan endpoints. Require DB pool +
+		// River client (for job-state lookups + enqueue). If either is
+		// missing we register the read-only endpoints anyway so the
+		// frontend can still 404 cleanly during dev.
+		if d.DB != nil && d.River != nil {
+			onboarding.Register(authed, onboarding.HandlerDeps{
+				DB:      d.DB,
+				Queries: d.Queries,
+				River:   d.River,
+			})
+			baseline.Register(authed, baseline.HandlerDeps{
+				DB:      d.DB,
+				Queries: d.Queries,
+				River:   d.River,
+			})
+			plan.Register(authed, plan.HandlerDeps{
+				DB:      d.DB,
+				Queries: d.Queries,
+				River:   d.River,
+			})
+
+			// SSE handler — registered on the chi router with auth
+			// middleware applied directly (Huma assumes JSON, so this
+			// route bypasses humachi).
+			r.Group(func(sub chi.Router) {
+				sub.Use(d.Verifier.Middleware)
+				sub.Get("/v1/me/onboarding/stream", onboarding.SSEDeps{DB: d.DB}.HandleStream())
 			})
 		}
 	}

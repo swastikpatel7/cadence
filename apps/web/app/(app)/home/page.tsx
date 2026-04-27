@@ -1,22 +1,113 @@
 import { currentUser } from '@clerk/nextjs/server';
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
+import { GoalCard } from '@/components/dashboard/goal-card';
+import { Heatmap } from '@/components/dashboard/heatmap';
+import { ShimmerPoll } from '@/components/dashboard/shimmer-poll';
+import { TodaysSession } from '@/components/dashboard/todays-session';
 import { Aurora } from '@/components/ui/aurora';
 import { ArrowRight, Button } from '@/components/ui/button';
 import { GlassCard } from '@/components/ui/glass-card';
 import { StravaMark } from '@/components/ui/strava-mark';
+import {
+  ApiError,
+  type Baseline,
+  type HeatmapResponse,
+  type HeatmapWeek,
+  type SyncStatus,
+  type UserGoal,
+} from '@/lib/api-client';
+import { serverFetch } from '@/lib/api-server';
 
 export const metadata = {
   title: 'Today — Cadence',
 };
 
+/**
+ * /home — the dashboard. After onboarding lands, this is the canonical
+ * surface. Per insights.md §6 + §12 we run four parallel server fetches
+ * and route the user appropriately:
+ *   - /v1/me/sync     → connection state, recent activities (existing).
+ *   - /v1/me/goal     → 404 → redirect('/onboarding').
+ *   - /v1/me/baseline → 404 → render shimmer (plan still generating).
+ *   - /v1/me/plan/heatmap → 404 same fallback.
+ *
+ * Hero is preserved (the previous redesign anchors on it). The
+ * `PlaceholderGrid` is replaced with the real plan widgets.
+ */
 export default async function HomePage() {
   const user = await currentUser();
   const greetName = user?.firstName ?? user?.username ?? 'athlete';
 
+  // 1) Sync status — also tells us if Strava is connected at all.
+  let sync: SyncStatus | null = null;
+  try {
+    sync = await serverFetch<SyncStatus>('/v1/me/sync');
+  } catch {
+    // ignore — UI falls back to "not connected" layout below.
+  }
+  const connected = sync?.connection?.connected ?? false;
+
+  // 2) Goal — 404 means we should redirect into onboarding. Other errors
+  //    fall through (we'd rather show a partial dashboard than block).
+  let goal: UserGoal | null = null;
+  let goalNotFound = false;
+  try {
+    const res = await serverFetch<{ goal: UserGoal }>('/v1/me/goal');
+    goal = res.goal;
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 404) {
+      goalNotFound = true;
+    }
+  }
+  if (goalNotFound && connected) {
+    // Connected but no goal → kick into onboarding.
+    redirect('/onboarding');
+  }
+
+  // 3) Baseline + heatmap — both can 404 if the plan is still generating.
+  let baseline: Baseline | null = null;
+  try {
+    if (goal) {
+      const res = await serverFetch<{ baseline: Baseline }>('/v1/me/baseline');
+      baseline = res.baseline;
+    }
+  } catch {
+    // 404 is the expected mid-onboarding state.
+  }
+
+  let heatmap: HeatmapWeek[] | null = null;
+  let heatmapShimmer = false;
+  try {
+    if (goal) {
+      const res = await serverFetch<HeatmapResponse>(
+        '/v1/me/plan/heatmap?weeks_back=2&weeks_forward=6',
+      );
+      heatmap = res.weeks;
+      // Heuristic — if every cell is rest, the plan is the skeleton.
+      heatmapShimmer = res.weeks.every((w) =>
+        w.every((c) => c.prescribed_load === 'rest'),
+      );
+    }
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 404) {
+      heatmapShimmer = true;
+    }
+  }
+
   return (
     <>
       <Hero name={greetName} />
-      <PlaceholderGrid />
+      {goal ? (
+        <DashboardBody
+          goal={goal}
+          baseline={baseline}
+          weeks={heatmap}
+          shimmer={heatmapShimmer || !heatmap}
+        />
+      ) : (
+        <PlaceholderGrid connected={connected} />
+      )}
     </>
   );
 }
@@ -30,9 +121,6 @@ function Hero({ name }: { name: string }) {
 
   return (
     <section className="relative overflow-hidden border-b border-white/[0.06]">
-      {/* Aurora dominates the right two-thirds; text stays legible
-          on the left thanks to the focus offset + a soft left-side
-          gradient mask. */}
       <div className="pointer-events-none absolute inset-0">
         <Aurora
           variant="violet"
@@ -41,7 +129,6 @@ function Hero({ name }: { name: string }) {
           wind={[-0.012, 0.004]}
           scale={0.85}
         />
-        {/* Left-side darkening for text legibility. */}
         <div
           className="absolute inset-0"
           style={{
@@ -49,7 +136,6 @@ function Hero({ name }: { name: string }) {
               'linear-gradient(90deg, oklch(0.07 0.02 270 / 0.90) 0%, oklch(0.07 0.02 270 / 0.55) 35%, oklch(0.07 0.02 270 / 0) 70%)',
           }}
         />
-        {/* Soft bottom fade into the next section. */}
         <div
           className="absolute inset-x-0 bottom-0 h-[35%]"
           style={{
@@ -59,40 +145,66 @@ function Hero({ name }: { name: string }) {
         />
       </div>
 
-      <div className="relative z-10 mx-auto max-w-[1280px] px-6 py-20 md:py-28">
+      <div className="relative z-10 mx-auto max-w-[1280px] px-6 py-16 md:py-20">
         <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-white/45">
           {today.toUpperCase()}
         </p>
-        <h1 className="mt-4 max-w-[20ch] text-[52px] font-semibold leading-[0.98] tracking-[-0.035em] text-white md:text-[80px]">
+        <h1 className="mt-4 max-w-[20ch] text-[44px] font-semibold leading-[0.98] tracking-[-0.035em] text-white md:text-[68px]">
           Welcome back,{' '}
           <span className="display font-normal text-white/95">{name}.</span>
         </h1>
-        <p className="mt-6 max-w-[58ch] text-[16.5px] leading-[1.55] text-white/65">
-          Cadence is empty until your first activity lands. Connect Strava and
-          we'll backfill the last 90 days, then keep streaming new sessions
-          within sixty seconds.
-        </p>
       </div>
     </section>
   );
 }
 
-function PlaceholderGrid() {
+function DashboardBody({
+  goal,
+  baseline,
+  weeks,
+  shimmer,
+}: {
+  goal: UserGoal;
+  baseline: Baseline | null;
+  weeks: HeatmapWeek[] | null;
+  shimmer: boolean;
+}) {
+  // Build a shimmer-week scaffold so the grid still has shape.
+  const displayWeeks = weeks && weeks.length > 0 ? weeks : buildShimmerWeeks();
+  const thisWeek = displayWeeks.find((w) => w.some((c) => c.is_today)) ?? null;
+
   return (
-    <section className="mx-auto max-w-[1280px] px-6 py-12">
+    <section className="mx-auto max-w-[1280px] px-6 py-10">
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1.4fr_1fr]">
-        <ConnectCard />
+        <TodaysSession weeks={displayWeeks} />
+        <GoalCard goal={goal} baseline={baseline} thisWeek={thisWeek} />
+      </div>
+      <div className="mt-5">
+        <Heatmap weeks={displayWeeks} shimmering={shimmer} />
+        {shimmer ? <ShimmerPoll /> : null}
+      </div>
+      <div className="mt-5">
         <CoachStub />
       </div>
+    </section>
+  );
+}
 
-      <div className="mt-5 grid grid-cols-1 gap-5 md:grid-cols-3">
-        <StatStub label="WEEKLY VOLUME" hint="awaiting data" />
-        <StatStub label="HR ZONES" hint="awaiting data" />
-        <StatStub label="RECOVERY" hint="awaiting data" />
-      </div>
-
+function PlaceholderGrid({ connected }: { connected: boolean }) {
+  return (
+    <section className="mx-auto max-w-[1280px] px-6 py-12">
+      {connected ? (
+        <div className="grid grid-cols-1 gap-5">
+          <CoachStub />
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1.4fr_1fr]">
+          <ConnectCard />
+          <CoachStub />
+        </div>
+      )}
       <p className="mt-12 text-center font-mono text-[11px] tracking-[0.18em] text-white/30">
-        v0.1 · WIRES BACKEND IN PHASE 3 · YOUR DATA, YOUR PACE
+        v0.1 · YOUR DATA, YOUR PACE
       </p>
     </section>
   );
@@ -162,12 +274,11 @@ function CoachStub() {
         STEP 02 · COACH
       </p>
       <h3 className="mt-3 text-[22px] font-medium leading-[1.1] tracking-[-0.02em] text-white">
-        Your coach, asleep.
+        Your coach, listening.
       </h3>
       <p className="mt-3 text-[14px] leading-[1.55] text-white/55">
-        The coach wakes up after your first activity syncs. It reads your last
-        14 days, weekly load, and recovery signals before answering — never
-        before.
+        Once a session lands, the coach reads your last 14 days, weekly load,
+        and recovery before answering. Full chat ships in the next pass.
       </p>
 
       <div className="mt-5 flex-1 rounded-xl border border-white/10 bg-black/30 p-4">
@@ -185,18 +296,35 @@ function CoachStub() {
   );
 }
 
-function StatStub({ label, hint }: { label: string; hint: string }) {
-  return (
-    <div className="rounded-[var(--radius-card)] border border-white/[0.07] bg-gradient-to-b from-white/[0.025] to-transparent p-5">
-      <p className="font-mono text-[10.5px] uppercase tracking-[0.22em] text-white/40">
-        {label}
-      </p>
-      <p className="num mt-3 text-[36px] tracking-[-0.04em] text-white/30">
-        —
-      </p>
-      <p className="mt-2 font-mono text-[10.5px] uppercase tracking-[0.18em] text-white/30">
-        ○ {hint}
-      </p>
-    </div>
-  );
+function buildShimmerWeeks(): HeatmapWeek[] {
+  const today = new Date();
+  const dow = today.getUTCDay(); // 0..6 (Sun..Sat)
+  // Convert to Mon-anchor: Mon=0..Sun=6.
+  const monIdx = (dow + 6) % 7;
+  const monStart = new Date(today);
+  monStart.setUTCDate(monStart.getUTCDate() - monIdx);
+  monStart.setUTCHours(0, 0, 0, 0);
+
+  const weeks: HeatmapWeek[] = [];
+  for (let w = -2; w <= 6; w++) {
+    const week: HeatmapWeek = [];
+    for (let d = 0; d < 7; d++) {
+      const cellDate = new Date(monStart);
+      cellDate.setUTCDate(monStart.getUTCDate() + w * 7 + d);
+      const iso = cellDate.toISOString().slice(0, 10);
+      const isToday =
+        cellDate.getUTCFullYear() === today.getUTCFullYear() &&
+        cellDate.getUTCMonth() === today.getUTCMonth() &&
+        cellDate.getUTCDate() === today.getUTCDate();
+      const isFuture = cellDate.getTime() > today.getTime();
+      week.push({
+        date: iso,
+        prescribed_load: 'rest',
+        is_today: isToday,
+        is_future: isFuture,
+      });
+    }
+    weeks.push(week);
+  }
+  return weeks;
 }

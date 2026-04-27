@@ -250,6 +250,120 @@ CREATE INDEX idx_coach_messages_conversation
     ON coach_messages (conversation_id, created_at);
 
 
+-- ─── user_goals ──────────────────────────────────────────────────────
+-- [m: 0003-onboarding_baseline_plan]
+-- One row per user. Captured at the end of the onboarding wizard;
+-- subsequent edits via PATCH /v1/me/goal use UPSERT semantics keyed on
+-- the user_id UNIQUE constraint. weekly_miles_target stays in MILES
+-- (not km) because the wizard slider is mile-denominated and re-deriving
+-- it from a km value would be lossy.
+CREATE TABLE user_goals (
+    id                       uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id                  uuid        NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+    focus                    text        NOT NULL CHECK (focus IN ('general','build_distance','build_speed','train_for_race')),
+    weekly_miles_target      integer     NOT NULL CHECK (weekly_miles_target BETWEEN 5 AND 80),
+    days_per_week            integer     NOT NULL CHECK (days_per_week BETWEEN 3 AND 7),
+    target_distance_km       numeric(6,2),
+    target_pace_sec_per_km   integer,
+    race_date                date,
+    created_at               timestamptz NOT NULL DEFAULT now(),
+    updated_at               timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TRIGGER trg_user_goals_updated_at
+    BEFORE UPDATE ON user_goals
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+
+-- ─── baselines ───────────────────────────────────────────────────────
+-- [m: 0003-onboarding_baseline_plan]
+-- Computed baselines. History is preserved (one row per recompute); the
+-- "current" baseline is the row with the most recent computed_at.
+-- avg_pace_at_distance is a JSON map of {distance_km_int: sec_per_km}
+-- (e.g. {"5": 294, "10": 319}). model + token columns let ops
+-- dashboards track Anthropic spend per user; not exposed on the API.
+CREATE TABLE baselines (
+    id                       uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id                  uuid        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    window_days              integer     NOT NULL,
+    computed_at              timestamptz NOT NULL DEFAULT now(),
+    fitness_tier             text        NOT NULL CHECK (fitness_tier IN ('T1','T2','T3','T4','T5')),
+    weekly_volume_km_avg     numeric(6,2) NOT NULL,
+    weekly_volume_km_p25     numeric(6,2) NOT NULL,
+    weekly_volume_km_p75     numeric(6,2) NOT NULL,
+    avg_pace_sec_per_km      integer     NOT NULL,
+    avg_pace_at_distance     jsonb       NOT NULL DEFAULT '{}'::jsonb,
+    longest_run_km           numeric(6,2) NOT NULL,
+    consistency_score        integer     NOT NULL CHECK (consistency_score BETWEEN 0 AND 100),
+    narrative                text        NOT NULL,
+    source                   text        NOT NULL CHECK (source IN ('onboarding','manual_recompute','sync_milestone')),
+    model                    text        NOT NULL,
+    input_tokens             integer     NOT NULL,
+    output_tokens            integer     NOT NULL,
+    thinking_tokens          integer     NOT NULL DEFAULT 0
+);
+
+CREATE INDEX baselines_user_recent
+    ON baselines (user_id, computed_at DESC);
+
+
+-- ─── coach_plans ─────────────────────────────────────────────────────
+-- [m: 0003-onboarding_baseline_plan]
+-- Generated training plans. generation_kind distinguishes the one-time
+-- 8-week initial plan (Opus 4.7) from the recurring weekly refresh
+-- (Sonnet 4.6). superseded_by chains old → new so the "current" plan
+-- is the row with superseded_by IS NULL. plan jsonb holds the structured
+-- {weeks:[{week_index,total_km,sessions:[...]}]} blob the heatmap
+-- handler iterates over to project per-day cells.
+CREATE TABLE coach_plans (
+    id                       uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id                  uuid        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    generation_kind          text        NOT NULL CHECK (generation_kind IN ('initial_8wk','weekly_refresh')),
+    baseline_id              uuid        REFERENCES baselines(id) ON DELETE SET NULL,
+    goal_id                  uuid        REFERENCES user_goals(id) ON DELETE SET NULL,
+    starts_on                date        NOT NULL,
+    weeks_count              integer     NOT NULL,
+    generated_at             timestamptz NOT NULL DEFAULT now(),
+    plan                     jsonb       NOT NULL,
+    model                    text        NOT NULL,
+    input_tokens             integer     NOT NULL,
+    output_tokens            integer     NOT NULL,
+    thinking_tokens          integer     NOT NULL DEFAULT 0,
+    superseded_by            uuid        REFERENCES coach_plans(id),
+    reason                   text
+);
+
+CREATE INDEX coach_plans_user_current
+    ON coach_plans (user_id, starts_on)
+    WHERE superseded_by IS NULL;
+
+
+-- ─── coach_insights ──────────────────────────────────────────────────
+-- [m: 0003-onboarding_baseline_plan]
+-- Per-activity AI-generated context. v1 only writes `kind='micro_summary'`
+-- (lazy Haiku 4.5 line shown in the heatmap drawer); future kinds layer
+-- on the same table. (activity_id, kind) UNIQUE makes worker insertion
+-- idempotent so two concurrent SessionMicroSummaryWorker invocations
+-- land on the ON CONFLICT path instead of double-billing.
+CREATE TABLE coach_insights (
+    id              uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id         uuid        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    activity_id     uuid        REFERENCES activities(id) ON DELETE CASCADE,
+    kind            text        NOT NULL,
+    body            text        NOT NULL,
+    model           text        NOT NULL,
+    input_tokens    integer     NOT NULL DEFAULT 0,
+    output_tokens   integer     NOT NULL DEFAULT 0,
+    created_at      timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE UNIQUE INDEX coach_insights_activity_kind
+    ON coach_insights (activity_id, kind);
+
+CREATE INDEX coach_insights_user_recent
+    ON coach_insights (user_id, created_at DESC);
+
+
 -- ─── River (Postgres job queue) ──────────────────────────────────────
 -- River creates and owns its tables (river_job, river_leader,
 -- river_queue, river_client, etc.) via its migrate command, run on
