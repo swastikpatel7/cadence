@@ -1,16 +1,22 @@
+import { auth } from '@clerk/nextjs/server';
 import { ArrowRight, Button } from '@/components/ui/button';
 import { Aurora } from '@/components/ui/aurora';
 import { GlassCard } from '@/components/ui/glass-card';
 import { KeyHint } from '@/components/ui/key-hint';
 import { Pill } from '@/components/ui/pill';
 
-export default function LandingPage() {
+export default async function LandingPage() {
+  // Signed-in visitors can still browse the landing page; the CTAs swap to
+  // dashboard links so "Start training" doesn't dead-end through /sign-up.
+  const { userId } = await auth();
+  const signedIn = userId !== null && userId !== undefined;
+
   return (
     <>
-      <Hero />
+      <Hero signedIn={signedIn} />
       <HowItWorks />
       <PrivacyStrip />
-      <BottomCTA />
+      <BottomCTA signedIn={signedIn} />
     </>
   );
 }
@@ -18,7 +24,7 @@ export default function LandingPage() {
 /* ─────────────────────────────────────────────────────────────────
    Hero — violet aurora, status pill, editorial italic headline.
    ───────────────────────────────────────────────────────────────── */
-function Hero() {
+function Hero({ signedIn }: { signedIn: boolean }) {
   return (
     <section className="relative min-h-[100svh] overflow-hidden">
       <Aurora
@@ -101,8 +107,8 @@ function Hero() {
             className="mt-10 flex flex-wrap items-center gap-3 animate-[rise-in_900ms_var(--ease-out-expo)_both]"
             style={{ animationDelay: '460ms' }}
           >
-            <Button href="/sign-up" size="lg">
-              Start training
+            <Button href={signedIn ? '/home' : '/sign-up'} size="lg">
+              {signedIn ? 'Open dashboard' : 'Start training'}
               <ArrowRight />
             </Button>
             <Button href="#how" variant="ghost" size="lg">
@@ -308,7 +314,7 @@ function PrivacyStrip() {
 /* ─────────────────────────────────────────────────────────────────
    Bottom CTA — marble aurora. Different palette, same component.
    ───────────────────────────────────────────────────────────────── */
-function BottomCTA() {
+function BottomCTA({ signedIn }: { signedIn: boolean }) {
   return (
     <section className="relative overflow-hidden">
       <Aurora
@@ -333,21 +339,23 @@ function BottomCTA() {
         </p>
 
         <div className="mt-10 flex flex-wrap items-center justify-center gap-3">
-          <Button href="/sign-up" size="lg">
-            Get early access
+          <Button href={signedIn ? '/home' : '/sign-up'} size="lg">
+            {signedIn ? 'Open dashboard' : 'Get early access'}
             <ArrowRight />
           </Button>
-          <Button href="/sign-in" variant="ghost" size="lg">
-            I already have an account
-          </Button>
+          {signedIn ? null : (
+            <Button href="/sign-in" variant="ghost" size="lg">
+              I already have an account
+            </Button>
+          )}
         </div>
 
         <GlassCard className="mt-14 grid w-full max-w-3xl grid-cols-3 gap-px overflow-hidden bg-white/[0.04] p-0">
           {(
             [
               ['WEB', 'Next.js 15', 'live'],
-              ['IOS', 'TestFlight', 'soon'],
-              ['WATCH', 'watchOS', 'soon'],
+              ['WHOOP', 'Whoop band', 'soon'],
+              ['GARMIN', 'Garmin watch', 'soon'],
             ] as const
           ).map(([tag, sub, status]) => (
             <div

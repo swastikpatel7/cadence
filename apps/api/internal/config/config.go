@@ -35,6 +35,12 @@ const (
 	EnvAnthropicAPIKey = "ANTHROPIC_API_KEY"
 	EnvAnthropicModel  = "ANTHROPIC_MODEL"
 
+	// Coach v1 model overrides (optional). If unset, fall back to the
+	// per-model defaults wired in apps/api/internal/coach/anthropic.go.
+	EnvAnthropicModelOpus   = "ANTHROPIC_MODEL_OPUS"
+	EnvAnthropicModelSonnet = "ANTHROPIC_MODEL_SONNET"
+	EnvAnthropicModelHaiku  = "ANTHROPIC_MODEL_HAIKU"
+
 	// Crypto (used Phase 3 onward)
 	EnvEncryptionKey = "ENCRYPTION_KEY"
 )
@@ -58,8 +64,11 @@ type Config struct {
 
 	WebBaseURL string
 
-	AnthropicAPIKey string
-	AnthropicModel  string
+	AnthropicAPIKey     string
+	AnthropicModel      string
+	AnthropicModelOpus   string
+	AnthropicModelSonnet string
+	AnthropicModelHaiku  string
 
 	EncryptionKey string
 }
@@ -81,6 +90,9 @@ func Load() (*Config, error) {
 		WebBaseURL:               getEnv(EnvWebBaseURL, "http://localhost:3000"),
 		AnthropicAPIKey:          os.Getenv(EnvAnthropicAPIKey),
 		AnthropicModel:           getEnv(EnvAnthropicModel, "claude-sonnet-4-6"),
+		AnthropicModelOpus:       os.Getenv(EnvAnthropicModelOpus),
+		AnthropicModelSonnet:     os.Getenv(EnvAnthropicModelSonnet),
+		AnthropicModelHaiku:      os.Getenv(EnvAnthropicModelHaiku),
 		EncryptionKey:            os.Getenv(EnvEncryptionKey),
 	}
 

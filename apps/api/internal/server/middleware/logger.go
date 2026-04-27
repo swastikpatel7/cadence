@@ -1,7 +1,9 @@
 package middleware
 
 import (
+	"bufio"
 	"log/slog"
+	"net"
 	"net/http"
 	"time"
 
@@ -43,4 +45,30 @@ type statusWriter struct {
 func (w *statusWriter) WriteHeader(code int) {
 	w.status = code
 	w.ResponseWriter.WriteHeader(code)
+}
+
+// Unwrap exposes the underlying writer so http.NewResponseController can
+// walk the chain. Required so SSE handlers (and anyone else) can fetch
+// Flush/Hijack via the controller even when a wrapper sits in front.
+func (w *statusWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
+
+// Flush delegates to the underlying writer when it supports http.Flusher.
+// Without this method, the SSE handler's `w.(http.Flusher)` assertion
+// fails (embedding does not promote a method that isn't on the embedded
+// interface — http.ResponseWriter doesn't include Flush), and the entire
+// onboarding stream returns 500 before emitting a single event.
+func (w *statusWriter) Flush() {
+	if f, ok := w.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
+// Hijack lets WebSocket / connection-takeover handlers reach the
+// underlying http.Hijacker through this wrapper. Same reasoning as
+// Flush — embedding alone doesn't promote the optional interface.
+func (w *statusWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	if h, ok := w.ResponseWriter.(http.Hijacker); ok {
+		return h.Hijack()
+	}
+	return nil, nil, http.ErrNotSupported
 }

@@ -1,5 +1,6 @@
 import { ClerkProvider } from '@clerk/nextjs';
 import { GeistMono } from 'geist/font/mono';
+import { GeistPixelSquare } from 'geist/font/pixel';
 import { GeistSans } from 'geist/font/sans';
 import type { Metadata } from 'next';
 import { Instrument_Serif } from 'next/font/google';
@@ -34,7 +35,7 @@ export default function RootLayout({
     <ClerkProvider>
       <html
         lang="en"
-        className={`${GeistSans.variable} ${GeistMono.variable} ${instrumentSerif.variable}`}
+        className={`${GeistSans.variable} ${GeistMono.variable} ${GeistPixelSquare.variable} ${instrumentSerif.variable}`}
       >
         <body className="antialiased">{children}</body>
       </html>

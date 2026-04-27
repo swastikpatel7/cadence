@@ -67,10 +67,29 @@
   --color-sport-swim:     oklch(0.74 0.14 200);
   --color-sport-strength: oklch(0.66 0.18 290);
 
-  /* Type — Geist via next/font sets the sans/mono vars,
-     Instrument Serif sets the display var. */
+  /* Heatmap load ramp — composes the calendar cell colors and the
+     "today's session" badge tone. Ordered from rest → peak so that
+     a cell can `style={{ backgroundColor: var(--color-load-${load}) }}`
+     directly. `skipped` overlays diagonal stripes in the cell renderer. */
+  --color-load-rest:     oklch(0.18 0.02 270 / 0.45);
+  --color-load-easy:     oklch(0.62 0.14 200 / 0.78);
+  --color-load-moderate: oklch(0.66 0.22 295 / 0.85);
+  --color-load-hard:     oklch(0.72 0.22 45  / 0.95);
+  --color-load-peak:     oklch(0.88 0.14 60  / 1.00);
+  --color-load-skipped:  oklch(0.50 0.02 270 / 0.40);
+
+  /* Type — Geist via next/font sets the sans/mono/pixel vars,
+     Instrument Serif sets the display var.
+     The mono channel resolves to Geist Pixel (Square variant) — a
+     pixel-grid typeface from Vercel. It cascades to every `font-mono`
+     consumer: tracked-uppercase labels, .num stat readouts, KeyHint
+     kbd chips, heatmap row labels, constellation step captions, and
+     pill captions. Geist Mono is kept as a fallback so any font-load
+     failure doesn't dump the page into ui-monospace. Sans + display
+     unchanged — pixel alongside Geist Sans body and Instrument Serif
+     italic display is the playful contrast that powers the design. */
   --font-sans:    var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
-  --font-mono:    var(--font-geist-mono), ui-monospace, monospace;
+  --font-mono:    var(--font-geist-pixel-square), var(--font-geist-mono), ui-monospace, SFMono-Regular, monospace;
   --font-display: var(--font-instrument-serif), ui-serif, Georgia, serif;
 
   /* Motion. */
@@ -168,6 +187,63 @@
 @keyframes pulse-dot {
   0%, 100% { box-shadow: 0 0 0 0 oklch(0.78 0.20 150 / 0.55); }
   50%      { box-shadow: 0 0 0 6px oklch(0.78 0.20 150 / 0); }
+}
+
+/* Constellation step indicator — 1.6s aurora-violet pulse on the
+   active onboarding step dot. Bloom radius matches the playful-
+   extension spec (insights.md §3). */
+@keyframes constellation-pulse {
+  0%, 100% {
+    box-shadow:
+      0 0 0 0 oklch(0.55 0.27 295 / 0.55),
+      0 0 0 0 oklch(0.55 0.27 295 / 0.0);
+  }
+  50% {
+    box-shadow:
+      0 0 0 4px oklch(0.55 0.27 295 / 0.18),
+      0 0 14px 2px oklch(0.55 0.27 295 / 0.55);
+  }
+}
+
+/* Aurora ripple — fires on primary CTA click, expands an OKLCH
+   violet→strava gradient pulse from the click origin. Combined
+   with `--ripple-x`/`--ripple-y` custom properties on the host
+   element to position the bloom. */
+@keyframes ripple-bloom {
+  0% {
+    opacity: 0.55;
+    transform: translate(-50%, -50%) scale(0.0);
+  }
+  60% {
+    opacity: 0.35;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(2.6);
+  }
+}
+
+/* Vertical aurora shimmer — used by the baseline "reading your runs"
+   loading state. Two stacked bands sweep top-to-bottom every 1.6s
+   with a subtle phase offset so the field never visibly resets. */
+@keyframes shimmer-vertical {
+  0%   { transform: translateY(-110%); opacity: 0; }
+  20%  { opacity: 1; }
+  80%  { opacity: 1; }
+  100% { transform: translateY(110%); opacity: 0; }
+}
+
+/* Heatmap stagger fade-in — single keyframe, the per-cell
+   `animation-delay` is computed in JS and applied as inline style. */
+@keyframes heatmap-cell-in {
+  0%   { opacity: 0; transform: scale(0.92); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+/* "Today" cell breathing aurora ring on the heatmap. */
+@keyframes today-breathe {
+  0%, 100% { transform: scale(1.0); }
+  50%      { transform: scale(1.05); }
 }
 
 /* Reduce motion if requested. */

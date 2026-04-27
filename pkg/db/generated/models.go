@@ -36,12 +36,45 @@ type ActivityStream struct {
 	FetchedAt  pgtype.Timestamptz
 }
 
+type Baseline struct {
+	ID                uuid.UUID
+	UserID            uuid.UUID
+	WindowDays        int32
+	ComputedAt        pgtype.Timestamptz
+	FitnessTier       string
+	WeeklyVolumeKmAvg pgtype.Numeric
+	WeeklyVolumeKmP25 pgtype.Numeric
+	WeeklyVolumeKmP75 pgtype.Numeric
+	AvgPaceSecPerKm   int32
+	AvgPaceAtDistance []byte
+	LongestRunKm      pgtype.Numeric
+	ConsistencyScore  int32
+	Narrative         string
+	Source            string
+	Model             string
+	InputTokens       int32
+	OutputTokens      int32
+	ThinkingTokens    int32
+}
+
 type CoachConversation struct {
 	ID        uuid.UUID
 	UserID    uuid.UUID
 	Title     *string
 	CreatedAt pgtype.Timestamptz
 	UpdatedAt pgtype.Timestamptz
+}
+
+type CoachInsight struct {
+	ID           uuid.UUID
+	UserID       uuid.UUID
+	ActivityID   *uuid.UUID
+	Kind         string
+	Body         string
+	Model        string
+	InputTokens  int32
+	OutputTokens int32
+	CreatedAt    pgtype.Timestamptz
 }
 
 type CoachMessage struct {
@@ -52,6 +85,24 @@ type CoachMessage struct {
 	Citations      []byte
 	TokenCount     *int32
 	CreatedAt      pgtype.Timestamptz
+}
+
+type CoachPlan struct {
+	ID             uuid.UUID
+	UserID         uuid.UUID
+	GenerationKind string
+	BaselineID     *uuid.UUID
+	GoalID         *uuid.UUID
+	StartsOn       pgtype.Date
+	WeeksCount     int32
+	GeneratedAt    pgtype.Timestamptz
+	Plan           []byte
+	Model          string
+	InputTokens    int32
+	OutputTokens   int32
+	ThinkingTokens int32
+	SupersededBy   *uuid.UUID
+	Reason         *string
 }
 
 type ConnectedAccount struct {
@@ -77,6 +128,19 @@ type User struct {
 	Email       string
 	CreatedAt   pgtype.Timestamptz
 	UpdatedAt   pgtype.Timestamptz
+}
+
+type UserGoal struct {
+	ID                 uuid.UUID
+	UserID             uuid.UUID
+	Focus              string
+	WeeklyMilesTarget  int32
+	DaysPerWeek        int32
+	TargetDistanceKm   pgtype.Numeric
+	TargetPaceSecPerKm *int32
+	RaceDate           pgtype.Date
+	CreatedAt          pgtype.Timestamptz
+	UpdatedAt          pgtype.Timestamptz
 }
 
 type UsersProfile struct {

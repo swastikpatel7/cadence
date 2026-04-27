@@ -24,10 +24,13 @@ import (
 	"golang.org/x/oauth2"
 
 	"github.com/swastikpatel7/cadence/apps/api/internal/auth"
+	"github.com/swastikpatel7/cadence/apps/api/internal/baseline"
 	"github.com/swastikpatel7/cadence/apps/api/internal/cache"
+	"github.com/swastikpatel7/cadence/apps/api/internal/coach"
 	"github.com/swastikpatel7/cadence/apps/api/internal/config"
 	"github.com/swastikpatel7/cadence/apps/api/internal/connections"
 	"github.com/swastikpatel7/cadence/apps/api/internal/jobs"
+	"github.com/swastikpatel7/cadence/apps/api/internal/plan"
 	"github.com/swastikpatel7/cadence/apps/api/internal/server"
 	"github.com/swastikpatel7/cadence/apps/api/internal/server/handlers"
 	pkgcrypto "github.com/swastikpatel7/cadence/pkg/crypto"
@@ -52,6 +55,7 @@ type Dependencies struct {
 	Verifier    *auth.Verifier
 	River       *river.Client[pgx.Tx]
 	Connections *connections.Service
+	Coach       *coach.Client
 	Server      *http.Server
 }
 
@@ -116,6 +120,17 @@ func InitDependencies(ctx context.Context) (*Dependencies, error) {
 		log.Warn("Strava env vars incomplete; connection endpoints + sync worker disabled (dev only)")
 	}
 
+	// Coach: shared Anthropic client for baseline/plan/micro-summary
+	// workers. Optional — if ANTHROPIC_API_KEY is empty the workers
+	// register normally but log + JobSnooze when invoked.
+	coachClient := coach.New(coach.Config{
+		APIKey:      cfg.AnthropicAPIKey,
+		Logger:      log,
+		ModelOpus:   cfg.AnthropicModelOpus,
+		ModelSonnet: cfg.AnthropicModelSonnet,
+		ModelHaiku:  cfg.AnthropicModelHaiku,
+	})
+
 	// Build the worker bundle before the client (river requires every
 	// kind we Insert() to be registered up front).
 	workers := river.NewWorkers()
@@ -123,6 +138,14 @@ func InitDependencies(ctx context.Context) (*Dependencies, error) {
 	if hasStrava {
 		river.AddWorker(workers, jobs.NewStravaSyncWorker(pool, queries, cipher, oauthCfg))
 	}
+	// Plan workers: registered before the client so the periodic-cron
+	// kind matches (River asserts at startup).
+	initialPlanWorker := plan.NewInitialWorker(queries, coachClient)
+	weeklyRefreshWorker := plan.NewWeeklyRefreshWorker(pool, queries, coachClient)
+	microSummaryWorker := plan.NewSessionMicroSummaryWorker(queries, coachClient)
+	river.AddWorker(workers, initialPlanWorker)
+	river.AddWorker(workers, weeklyRefreshWorker)
+	river.AddWorker(workers, microSummaryWorker)
 
 	periodicJobs := []*river.PeriodicJob{
 		river.NewPeriodicJob(
@@ -132,6 +155,7 @@ func InitDependencies(ctx context.Context) (*Dependencies, error) {
 			},
 			&river.PeriodicJobOpts{RunOnStart: true},
 		),
+		jobs.NewWeeklyRefreshPeriodic(),
 	}
 
 	riverClient, err := river.NewClient(riverpgxv5.New(pool), &river.Config{
@@ -146,6 +170,12 @@ func InitDependencies(ctx context.Context) (*Dependencies, error) {
 		pool.Close()
 		return nil, fmt.Errorf("system: river client: %w", err)
 	}
+
+	// BaselineComputeWorker is special: it both consumes JobArgs and
+	// chains an InitialPlan job via the river client. We add it after
+	// constructing the client so the dependency cycle resolves.
+	baselineWorker := baseline.NewWorker(pool, queries, coachClient, riverClient)
+	river.AddWorker(workers, baselineWorker)
 
 	var connService *connections.Service
 	if hasStrava {
@@ -168,11 +198,21 @@ func InitDependencies(ctx context.Context) (*Dependencies, error) {
 		WebhookSecret: cfg.ClerkWebhookSecret,
 		Connections:   connService,
 		WebBaseURL:    cfg.WebBaseURL,
+		DB:            pool,
+		River:         riverClient,
 	})
 	if err != nil {
 		pool.Close()
 		return nil, fmt.Errorf("system: build server: %w", err)
 	}
+
+	// Reference the workers we hold so go vet doesn't flag them as
+	// unused. River.AddWorker takes them by value-pointer; the locals
+	// are kept primarily so we can attach hooks later.
+	_ = initialPlanWorker
+	_ = weeklyRefreshWorker
+	_ = microSummaryWorker
+	_ = baselineWorker
 
 	return &Dependencies{
 		Logger:      log,
@@ -182,6 +222,7 @@ func InitDependencies(ctx context.Context) (*Dependencies, error) {
 		Verifier:    verifier,
 		River:       riverClient,
 		Connections: connService,
+		Coach:       coachClient,
 		Server:      srv,
 	}, nil
 }
