@@ -276,12 +276,14 @@ CREATE TRIGGER trg_user_goals_updated_at
 
 
 -- ─── baselines ───────────────────────────────────────────────────────
--- [m: 0003-onboarding_baseline_plan]
+-- [m: 0003-onboarding_baseline_plan, 0004-archive_for_reset]
 -- Computed baselines. History is preserved (one row per recompute); the
--- "current" baseline is the row with the most recent computed_at.
--- avg_pace_at_distance is a JSON map of {distance_km_int: sec_per_km}
--- (e.g. {"5": 294, "10": 319}). model + token columns let ops
--- dashboards track Anthropic spend per user; not exposed on the API.
+-- "current" baseline is the row with the most recent computed_at where
+-- archived_at IS NULL. avg_pace_at_distance is a JSON map of
+-- {distance_km_int: sec_per_km} (e.g. {"5": 294, "10": 319}). model +
+-- token columns let ops dashboards track Anthropic spend per user;
+-- not exposed on the API. archived_at hides rows from active reads
+-- after a reset-onboarding (rows preserved for audit / undo).
 CREATE TABLE baselines (
     id                       uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id                  uuid        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -300,21 +302,25 @@ CREATE TABLE baselines (
     model                    text        NOT NULL,
     input_tokens             integer     NOT NULL,
     output_tokens            integer     NOT NULL,
-    thinking_tokens          integer     NOT NULL DEFAULT 0
+    thinking_tokens          integer     NOT NULL DEFAULT 0,
+    archived_at              timestamptz                                   -- [m: 0004-archive_for_reset]
 );
 
+-- Partial: the "latest baseline" lookup walks active rows only.
 CREATE INDEX baselines_user_recent
-    ON baselines (user_id, computed_at DESC);
+    ON baselines (user_id, computed_at DESC)
+    WHERE archived_at IS NULL;
 
 
 -- ─── coach_plans ─────────────────────────────────────────────────────
--- [m: 0003-onboarding_baseline_plan]
+-- [m: 0003-onboarding_baseline_plan, 0004-archive_for_reset]
 -- Generated training plans. generation_kind distinguishes the one-time
 -- 8-week initial plan (Opus 4.7) from the recurring weekly refresh
 -- (Sonnet 4.6). superseded_by chains old → new so the "current" plan
--- is the row with superseded_by IS NULL. plan jsonb holds the structured
--- {weeks:[{week_index,total_km,sessions:[...]}]} blob the heatmap
--- handler iterates over to project per-day cells.
+-- is the row with superseded_by IS NULL. archived_at hides plans from
+-- the active heatmap after a reset (preserved for audit). plan jsonb
+-- holds the structured {weeks:[{week_index,total_km,sessions:[...]}]}
+-- blob the heatmap handler iterates over to project per-day cells.
 CREATE TABLE coach_plans (
     id                       uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id                  uuid        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -330,21 +336,23 @@ CREATE TABLE coach_plans (
     output_tokens            integer     NOT NULL,
     thinking_tokens          integer     NOT NULL DEFAULT 0,
     superseded_by            uuid        REFERENCES coach_plans(id),
-    reason                   text
+    reason                   text,
+    archived_at              timestamptz                                   -- [m: 0004-archive_for_reset]
 );
 
+-- Partial: a "live" plan is both un-superseded AND un-archived.
 CREATE INDEX coach_plans_user_current
     ON coach_plans (user_id, starts_on)
-    WHERE superseded_by IS NULL;
+    WHERE superseded_by IS NULL AND archived_at IS NULL;
 
 
 -- ─── coach_insights ──────────────────────────────────────────────────
--- [m: 0003-onboarding_baseline_plan]
+-- [m: 0003-onboarding_baseline_plan, 0004-archive_for_reset]
 -- Per-activity AI-generated context. v1 only writes `kind='micro_summary'`
 -- (lazy Haiku 4.5 line shown in the heatmap drawer); future kinds layer
--- on the same table. (activity_id, kind) UNIQUE makes worker insertion
--- idempotent so two concurrent SessionMicroSummaryWorker invocations
--- land on the ON CONFLICT path instead of double-billing.
+-- on the same table. (activity_id, kind) UNIQUE is *partial* on
+-- archived_at IS NULL so an archived row from a prior onboarding cycle
+-- doesn't block a fresh post-reset insert for the same activity.
 CREATE TABLE coach_insights (
     id              uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id         uuid        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -354,11 +362,15 @@ CREATE TABLE coach_insights (
     model           text        NOT NULL,
     input_tokens    integer     NOT NULL DEFAULT 0,
     output_tokens   integer     NOT NULL DEFAULT 0,
-    created_at      timestamptz NOT NULL DEFAULT now()
+    created_at      timestamptz NOT NULL DEFAULT now(),
+    archived_at     timestamptz                                            -- [m: 0004-archive_for_reset]
 );
 
+-- Partial unique: active rows only. Archived rows can coexist beside
+-- a fresh active row for the same (activity_id, kind) pair.
 CREATE UNIQUE INDEX coach_insights_activity_kind
-    ON coach_insights (activity_id, kind);
+    ON coach_insights (activity_id, kind)
+    WHERE archived_at IS NULL;
 
 CREATE INDEX coach_insights_user_recent
     ON coach_insights (user_id, created_at DESC);

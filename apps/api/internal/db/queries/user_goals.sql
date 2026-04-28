@@ -1,6 +1,11 @@
 -- name: GetGoalByUserID :one
 SELECT * FROM user_goals WHERE user_id = $1;
 
+-- name: DeleteGoalByUserID :exec
+-- Used by POST /v1/me/onboarding/reset. user_goals is pure config —
+-- hard delete is fine; the wizard re-INSERTs on completion.
+DELETE FROM user_goals WHERE user_id = $1;
+
 -- name: UpsertGoal :one
 -- Used by the onboarding-complete handler. Idempotent on user_id so a
 -- retry of POST /v1/me/onboarding/complete doesn't double-insert.

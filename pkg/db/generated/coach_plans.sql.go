@@ -12,15 +12,30 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const archiveCoachPlansByUserID = `-- name: ArchiveCoachPlansByUserID :exec
+UPDATE coach_plans SET archived_at = now()
+ WHERE user_id = $1 AND archived_at IS NULL
+`
+
+// Used by POST /v1/me/onboarding/reset. Soft-deletes the user's full
+// plan history so the wizard re-runs cleanly. Plan JSONB is preserved
+// for cost auditing.
+func (q *Queries) ArchiveCoachPlansByUserID(ctx context.Context, userID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, archiveCoachPlansByUserID, userID)
+	return err
+}
+
 const getCurrentPlanByUserID = `-- name: GetCurrentPlanByUserID :one
-SELECT id, user_id, generation_kind, baseline_id, goal_id, starts_on, weeks_count, generated_at, plan, model, input_tokens, output_tokens, thinking_tokens, superseded_by, reason FROM coach_plans
-WHERE user_id = $1 AND superseded_by IS NULL
+SELECT id, user_id, generation_kind, baseline_id, goal_id, starts_on, weeks_count, generated_at, plan, model, input_tokens, output_tokens, thinking_tokens, superseded_by, reason, archived_at FROM coach_plans
+WHERE user_id = $1
+  AND superseded_by IS NULL
+  AND archived_at IS NULL
 ORDER BY starts_on DESC
 LIMIT 1
 `
 
-// The "live" plan is the one with superseded_by IS NULL. Index
-// `coach_plans_user_current` is partial-on-that-condition.
+// The "live" plan must be both un-superseded AND un-archived. Partial
+// index `coach_plans_user_current` covers both predicates.
 func (q *Queries) GetCurrentPlanByUserID(ctx context.Context, userID uuid.UUID) (CoachPlan, error) {
 	row := q.db.QueryRow(ctx, getCurrentPlanByUserID, userID)
 	var i CoachPlan
@@ -40,14 +55,16 @@ func (q *Queries) GetCurrentPlanByUserID(ctx context.Context, userID uuid.UUID) 
 		&i.ThinkingTokens,
 		&i.SupersededBy,
 		&i.Reason,
+		&i.ArchivedAt,
 	)
 	return i, err
 }
 
 const getPlanWindow = `-- name: GetPlanWindow :many
-SELECT id, user_id, generation_kind, baseline_id, goal_id, starts_on, weeks_count, generated_at, plan, model, input_tokens, output_tokens, thinking_tokens, superseded_by, reason FROM coach_plans
+SELECT id, user_id, generation_kind, baseline_id, goal_id, starts_on, weeks_count, generated_at, plan, model, input_tokens, output_tokens, thinking_tokens, superseded_by, reason, archived_at FROM coach_plans
 WHERE user_id = $1
   AND superseded_by IS NULL
+  AND archived_at IS NULL
   AND starts_on <= $3
   AND (starts_on + (weeks_count || ' weeks')::interval)::date >= $2
 `
@@ -86,6 +103,7 @@ func (q *Queries) GetPlanWindow(ctx context.Context, arg GetPlanWindowParams) ([
 			&i.ThinkingTokens,
 			&i.SupersededBy,
 			&i.Reason,
+			&i.ArchivedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -104,7 +122,7 @@ INSERT INTO coach_plans (
     model, input_tokens, output_tokens, thinking_tokens, reason
 )
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-RETURNING id, user_id, generation_kind, baseline_id, goal_id, starts_on, weeks_count, generated_at, plan, model, input_tokens, output_tokens, thinking_tokens, superseded_by, reason
+RETURNING id, user_id, generation_kind, baseline_id, goal_id, starts_on, weeks_count, generated_at, plan, model, input_tokens, output_tokens, thinking_tokens, superseded_by, reason, archived_at
 `
 
 type InsertPlanParams struct {
@@ -157,6 +175,7 @@ func (q *Queries) InsertPlan(ctx context.Context, arg InsertPlanParams) (CoachPl
 		&i.ThinkingTokens,
 		&i.SupersededBy,
 		&i.Reason,
+		&i.ArchivedAt,
 	)
 	return i, err
 }
@@ -166,6 +185,7 @@ UPDATE coach_plans
 SET superseded_by = $2
 WHERE user_id = $1
   AND superseded_by IS NULL
+  AND archived_at IS NULL
   AND id <> $2
 `
 
@@ -175,7 +195,8 @@ type MarkPlanSupersededParams struct {
 }
 
 // Called after a successful WeeklyRefreshWorker INSERT to chain the
-// prior current plan to the new one.
+// prior current plan to the new one. Archived rows are skipped — they
+// have already been retired by the reset flow and shouldn't be touched.
 func (q *Queries) MarkPlanSuperseded(ctx context.Context, arg MarkPlanSupersededParams) error {
 	_, err := q.db.Exec(ctx, markPlanSuperseded, arg.UserID, arg.SupersededBy)
 	return err

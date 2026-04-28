@@ -55,6 +55,7 @@ type Baseline struct {
 	InputTokens       int32
 	OutputTokens      int32
 	ThinkingTokens    int32
+	ArchivedAt        pgtype.Timestamptz
 }
 
 type CoachConversation struct {
@@ -75,6 +76,7 @@ type CoachInsight struct {
 	InputTokens  int32
 	OutputTokens int32
 	CreatedAt    pgtype.Timestamptz
+	ArchivedAt   pgtype.Timestamptz
 }
 
 type CoachMessage struct {
@@ -103,6 +105,7 @@ type CoachPlan struct {
 	ThinkingTokens int32
 	SupersededBy   *uuid.UUID
 	Reason         *string
+	ArchivedAt     pgtype.Timestamptz
 }
 
 type ConnectedAccount struct {

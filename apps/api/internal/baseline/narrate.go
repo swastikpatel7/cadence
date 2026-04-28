@@ -43,9 +43,21 @@ var narrativeJSONSchema = map[string]any{
 			"minimum": 0,
 			"maximum": 100,
 		},
+		// Closed shape: Anthropic structured output rejects open `additionalProperties`
+		// schemas. Enumerate the four canonical race distances; each value
+		// is integer-or-null so the model can omit a distance it has no
+		// evidence for. NarrativeOutput.AvgPaceAtDistance is map[string]int —
+		// Go's JSON decoder skips null values when target is non-pointer int.
 		"avg_pace_at_distance": map[string]any{
-			"type":                 "object",
-			"additionalProperties": map[string]any{"type": "integer"},
+			"type": "object",
+			"properties": map[string]any{
+				"5":    map[string]any{"type": []string{"integer", "null"}},
+				"10":   map[string]any{"type": []string{"integer", "null"}},
+				"21.1": map[string]any{"type": []string{"integer", "null"}},
+				"42.2": map[string]any{"type": []string{"integer", "null"}},
+			},
+			"required":             []string{"5", "10", "21.1", "42.2"},
+			"additionalProperties": false,
 		},
 	},
 	"required":             []string{"fitness_tier", "narrative", "consistency_score"},

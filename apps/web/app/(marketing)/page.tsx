@@ -353,9 +353,9 @@ function BottomCTA({ signedIn }: { signedIn: boolean }) {
         <GlassCard className="mt-14 grid w-full max-w-3xl grid-cols-3 gap-px overflow-hidden bg-white/[0.04] p-0">
           {(
             [
-              ['WEB', 'Next.js 15', 'live'],
-              ['WHOOP', 'Whoop band', 'soon'],
-              ['GARMIN', 'Garmin watch', 'soon'],
+              ['STRAVA', 'Strava', 'live'],
+              ['WHOOP', 'Whoop', 'soon'],
+              ['GARMIN', 'Garmin', 'soon'],
             ] as const
           ).map(([tag, sub, status]) => (
             <div

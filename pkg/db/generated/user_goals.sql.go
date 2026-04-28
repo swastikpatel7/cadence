@@ -41,6 +41,17 @@ func (q *Queries) ClearGoalNullable(ctx context.Context, arg ClearGoalNullablePa
 	return err
 }
 
+const deleteGoalByUserID = `-- name: DeleteGoalByUserID :exec
+DELETE FROM user_goals WHERE user_id = $1
+`
+
+// Used by POST /v1/me/onboarding/reset. user_goals is pure config —
+// hard delete is fine; the wizard re-INSERTs on completion.
+func (q *Queries) DeleteGoalByUserID(ctx context.Context, userID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, deleteGoalByUserID, userID)
+	return err
+}
+
 const getGoalByUserID = `-- name: GetGoalByUserID :one
 SELECT id, user_id, focus, weekly_miles_target, days_per_week, target_distance_km, target_pace_sec_per_km, race_date, created_at, updated_at FROM user_goals WHERE user_id = $1
 `

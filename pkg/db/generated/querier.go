@@ -11,6 +11,19 @@ import (
 )
 
 type Querier interface {
+	// Used by POST /v1/me/onboarding/reset. Soft-deletes all of a user's
+	// baselines so a fresh wizard run starts with no history visible. The
+	// archived rows remain in-table for cost auditing.
+	ArchiveBaselinesByUserID(ctx context.Context, userID uuid.UUID) error
+	// Used by POST /v1/me/onboarding/reset. Soft-deletes all of a user's
+	// micro-summaries. After reset, the next session-detail open will
+	// regenerate via Haiku (or hit the partial-unique safely beside the
+	// archived row).
+	ArchiveCoachInsightsByUserID(ctx context.Context, userID uuid.UUID) error
+	// Used by POST /v1/me/onboarding/reset. Soft-deletes the user's full
+	// plan history so the wizard re-runs cleanly. Plan JSONB is preserved
+	// for cost auditing.
+	ArchiveCoachPlansByUserID(ctx context.Context, userID uuid.UUID) error
 	BreakdownActivitiesBySport(ctx context.Context, userID uuid.UUID) ([]BreakdownActivitiesBySportRow, error)
 	// Companion to UpdateGoalPartial: explicitly NULLs the optional fields
 	// the patch body sent as JSON null. The handler runs both queries in a
@@ -21,6 +34,9 @@ type Querier interface {
 	// Worker calls this when the sync loop finishes cleanly.
 	ClearSyncStartedSuccess(ctx context.Context, id uuid.UUID) error
 	CountActivitiesByUser(ctx context.Context, userID uuid.UUID) (int64, error)
+	// Used by POST /v1/me/onboarding/reset. user_goals is pure config —
+	// hard delete is fine; the wizard re-INSERTs on completion.
+	DeleteGoalByUserID(ctx context.Context, userID uuid.UUID) error
 	// Hard-deletes a user. Cascade clears users_profile, connected_accounts,
 	// activities, and coach_conversations via FK ON DELETE CASCADE.
 	// Triggered by Clerk's user.deleted webhook.
@@ -33,13 +49,15 @@ type Querier interface {
 	// a calendar date. Picks the longest run for that day if multiple exist.
 	GetActivityForDate(ctx context.Context, arg GetActivityForDateParams) (GetActivityForDateRow, error)
 	GetConnectedAccount(ctx context.Context, arg GetConnectedAccountParams) (ConnectedAccount, error)
-	// The "live" plan is the one with superseded_by IS NULL. Index
-	// `coach_plans_user_current` is partial-on-that-condition.
+	// The "live" plan must be both un-superseded AND un-archived. Partial
+	// index `coach_plans_user_current` covers both predicates.
 	GetCurrentPlanByUserID(ctx context.Context, userID uuid.UUID) (CoachPlan, error)
 	GetGoalByUserID(ctx context.Context, userID uuid.UUID) (UserGoal, error)
 	// Used by the session-detail handler to read the cached micro-summary.
+	// Filters out archived rows from a prior onboarding cycle.
 	GetInsightForActivity(ctx context.Context, arg GetInsightForActivityParams) (CoachInsight, error)
-	// Backs GET /v1/me/baseline. Index `baselines_user_recent` covers this.
+	// Backs GET /v1/me/baseline. Partial index `baselines_user_recent`
+	// (WHERE archived_at IS NULL) covers this.
 	GetLatestBaselineByUserID(ctx context.Context, userID uuid.UUID) (Baseline, error)
 	// Used by the heatmap endpoint to get the current plan that overlaps
 	// [window_start, window_end]. We pull the current plan only — the
@@ -52,7 +70,10 @@ type Querier interface {
 	// Inserted by BaselineComputeWorker after the Opus 4.7 narrative call.
 	// avg_pace_at_distance is a JSONB blob keyed by distance-int → sec/km.
 	InsertBaseline(ctx context.Context, arg InsertBaselineParams) (Baseline, error)
-	// Used by SessionMicroSummaryWorker. Idempotent on (activity_id, kind).
+	// Used by SessionMicroSummaryWorker. Idempotent on the *active*
+	// (activity_id, kind) pair. The migration rebuilt the UNIQUE index as
+	// partial on `WHERE archived_at IS NULL`, so the ON CONFLICT clause
+	// must echo that predicate to find the partial index.
 	InsertInsight(ctx context.Context, arg InsertInsightParams) (CoachInsight, error)
 	// Used by InitialPlanWorker (generation_kind='initial_8wk') and
 	// WeeklyRefreshWorker (generation_kind='weekly_refresh'). plan jsonb is
@@ -67,7 +88,8 @@ type Querier interface {
 	// Settings page "last N" preview.
 	ListRecentActivitiesByUser(ctx context.Context, arg ListRecentActivitiesByUserParams) ([]ListRecentActivitiesByUserRow, error)
 	// Called after a successful WeeklyRefreshWorker INSERT to chain the
-	// prior current plan to the new one.
+	// prior current plan to the new one. Archived rows are skipped — they
+	// have already been retired by the reset flow and shouldn't be touched.
 	MarkPlanSuperseded(ctx context.Context, arg MarkPlanSupersededParams) error
 	SetSyncProgress(ctx context.Context, arg SetSyncProgressParams) error
 	// Locks the connection into "syncing" state. POST /v1/me/sync returns

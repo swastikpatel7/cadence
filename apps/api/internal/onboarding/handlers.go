@@ -43,6 +43,7 @@ type RiverInsertable interface {
 // underlying chi.Router (it is not a Huma operation).
 func Register(authed huma.API, d HandlerDeps) {
 	registerComplete(authed, d)
+	registerReset(authed, d)
 	registerGoalGet(authed, d)
 	registerGoalUpdate(authed, d)
 }
@@ -182,6 +183,68 @@ LIMIT 1`
 		return "pending"
 	}
 	return id
+}
+
+// ─── POST /v1/me/onboarding/reset ─────────────────────────────────────
+
+// ResetOutput is the wire shape — empty body, 204 status. We use a
+// status-only output so Huma sets the Content-Length to 0 cleanly.
+type ResetOutput struct {
+	Status int
+}
+
+func registerReset(api huma.API, d HandlerDeps) {
+	huma.Register(api, huma.Operation{
+		OperationID:   "onboarding-reset",
+		Method:        http.MethodPost,
+		Path:          "/v1/me/onboarding/reset",
+		Summary:       "Soft-delete the user's goal, baseline, plan, and insights so onboarding re-runs",
+		Tags:          []string{"onboarding"},
+		DefaultStatus: http.StatusNoContent,
+	}, func(ctx context.Context, _ *struct{}) (*ResetOutput, error) {
+		userID, ok := auth.UserID(ctx)
+		if !ok {
+			return nil, huma.Error401Unauthorized("not authenticated")
+		}
+		log := pkglogger.FromContext(ctx)
+
+		tx, err := d.DB.Begin(ctx)
+		if err != nil {
+			log.Error("onboarding.reset: begin tx", "err", err)
+			return nil, huma.Error500InternalServerError("tx error")
+		}
+		defer func() { _ = tx.Rollback(ctx) }()
+		q := d.Queries.WithTx(tx)
+
+		// Order doesn't matter — these are independent rows. We hard-delete
+		// the goal (it's pure config; the wizard re-INSERTs on completion)
+		// and soft-delete everything else so cost auditing + undo stays
+		// possible.
+		if err := q.DeleteGoalByUserID(ctx, userID); err != nil {
+			log.Error("onboarding.reset: delete goal", "err", err, "user_id", userID)
+			return nil, huma.Error500InternalServerError("failed to clear goal")
+		}
+		if err := q.ArchiveBaselinesByUserID(ctx, userID); err != nil {
+			log.Error("onboarding.reset: archive baselines", "err", err, "user_id", userID)
+			return nil, huma.Error500InternalServerError("failed to archive baselines")
+		}
+		if err := q.ArchiveCoachPlansByUserID(ctx, userID); err != nil {
+			log.Error("onboarding.reset: archive plans", "err", err, "user_id", userID)
+			return nil, huma.Error500InternalServerError("failed to archive plans")
+		}
+		if err := q.ArchiveCoachInsightsByUserID(ctx, userID); err != nil {
+			log.Error("onboarding.reset: archive insights", "err", err, "user_id", userID)
+			return nil, huma.Error500InternalServerError("failed to archive insights")
+		}
+
+		if err := tx.Commit(ctx); err != nil {
+			log.Error("onboarding.reset: commit", "err", err)
+			return nil, huma.Error500InternalServerError("commit failed")
+		}
+
+		log.Info("onboarding.reset: soft-deleted user state", "user_id", userID)
+		return &ResetOutput{Status: http.StatusNoContent}, nil
+	})
 }
 
 // ─── GET /v1/me/goal ──────────────────────────────────────────────────
