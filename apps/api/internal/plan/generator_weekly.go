@@ -32,9 +32,14 @@ var weeklyRefreshSchema = map[string]any{
 			"items": map[string]any{
 				"type": "object",
 				"properties": map[string]any{
-					"week_index": map[string]any{"type": "integer", "minimum": 0, "maximum": 0},
+					// Bounds intentionally omitted — Anthropic structured-output
+					// rejects min/max on integer/number. The system prompt
+					// states week_index is always 0 and parsePlanBlob rejects
+					// negative distances; GenerateWeekly asserts WeekIndex==0
+					// after parse.
+					"week_index": map[string]any{"type": "integer"},
 					"start_date": map[string]any{"type": "string", "format": "date"},
-					"total_km":   map[string]any{"type": "number", "minimum": 0},
+					"total_km":   map[string]any{"type": "number"},
 					"sessions": map[string]any{
 						"type": "array",
 						"items": map[string]any{
@@ -42,7 +47,7 @@ var weeklyRefreshSchema = map[string]any{
 							"properties": map[string]any{
 								"date":                    map[string]any{"type": "string", "format": "date"},
 								"type":                    map[string]any{"type": "string", "enum": []string{"easy", "tempo", "intervals", "long", "recovery", "race_pace"}},
-								"distance_km":             map[string]any{"type": "number", "minimum": 0},
+								"distance_km":             map[string]any{"type": "number"},
 								"intensity":               map[string]any{"type": "string", "enum": []string{"easy", "moderate", "hard"}},
 								"pace_target_sec_per_km":  map[string]any{"type": "integer"},
 								"duration_min_target":     map[string]any{"type": "integer"},
@@ -137,6 +142,12 @@ func GenerateWeekly(
 	}
 	if len(parsed.Weeks) != 1 {
 		return nil, nil, fmt.Errorf("plan.generator_weekly: expected 1 week, got %d", len(parsed.Weeks))
+	}
+	// Schema can't pin week_index to 0 anymore (min=max=0 was rejected);
+	// re-assert here so a model misfire can't slip a non-zero index past
+	// callers that assume single-week refresh shape.
+	if parsed.Weeks[0].WeekIndex != 0 {
+		return nil, nil, fmt.Errorf("plan.generator_weekly: expected week_index 0, got %d", parsed.Weeks[0].WeekIndex)
 	}
 	return parsed, res, nil
 }

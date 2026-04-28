@@ -4,6 +4,7 @@ import { Suspense } from 'react';
 import { AppShellNav } from '@/components/app/app-shell-nav';
 import { StravaStatusPill } from '@/components/app/strava-status-pill';
 import { WordMark } from '@/components/ui/brand-mark';
+import { UnitToggle } from '@/components/units/unit-toggle';
 
 /**
  * Signed-in chrome. Quieter than the marketing nav: a single rail at the top
@@ -30,6 +31,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <AppShellNav />
 
           <div className="flex items-center gap-3">
+            <UnitToggle />
             <Suspense fallback={null}>
               <StravaStatusPill />
             </Suspense>

@@ -38,10 +38,13 @@ var narrativeJSONSchema = map[string]any{
 			"minLength": 60,
 			"maxLength": 600,
 		},
+		// Bounds are NOT expressed in the schema — Anthropic's structured-output
+		// API rejects `minimum`/`maximum` on integer types ("For 'integer'
+		// type, properties maximum, minimum are not supported"). The 0-100
+		// range is described in the system prompt and re-enforced by clamp
+		// in parseNarrative.
 		"consistency_score": map[string]any{
-			"type":    "integer",
-			"minimum": 0,
-			"maximum": 100,
+			"type": "integer",
 		},
 		// Closed shape: Anthropic structured output rejects open `additionalProperties`
 		// schemas. Enumerate the four canonical race distances; each value
@@ -68,7 +71,7 @@ const baselineSystemPrompt = `You are Cadence's onboarding coach. Your job is to
 
 Voice: warm, observational, specific, never preachy. 2-4 sentences, ≤ 90 words. No exclamation marks, no second-person commands. Reference at least one specific stat the user can verify (a date, a pace, a distance). End with a one-clause hint at where Cadence will take them next month.
 
-You will return JSON exactly matching the provided schema. The narrative goes in the "narrative" field. Choose fitness_tier from {T1, T2, T3, T4, T5}: T1 (sedentary/returning), T2 (foundation, ≤25km/wk), T3 (consistent, 25-45km/wk), T4 (advanced, 45-70km/wk), T5 (competitive, ≥70km/wk).`
+You will return JSON exactly matching the provided schema. The narrative goes in the "narrative" field. Choose fitness_tier from {T1, T2, T3, T4, T5}: T1 (sedentary/returning), T2 (foundation, ≤25km/wk), T3 (consistent, 25-45km/wk), T4 (advanced, 45-70km/wk), T5 (competitive, ≥70km/wk). consistency_score is an integer between 0 and 100 inclusive (0 = no recent activity, 100 = ran on every available day).`
 
 // Narrate calls Opus 4.7 with the volume curve + recent runs context
 // and returns the parsed JSON. Returns the *coach.Result alongside so
@@ -184,6 +187,14 @@ func parseNarrative(raw string) (*NarrativeOutput, error) {
 	}
 	if out.FitnessTier == "" {
 		return nil, fmt.Errorf("empty fitness_tier")
+	}
+	// Clamp consistency_score post-parse — schema can't express the bound,
+	// the prompt asks for 0..100; if the model strays we clip rather than
+	// fail the whole onboarding (the user-visible narrative is fine).
+	if out.ConsistencyScore < 0 {
+		out.ConsistencyScore = 0
+	} else if out.ConsistencyScore > 100 {
+		out.ConsistencyScore = 100
 	}
 	return &out, nil
 }

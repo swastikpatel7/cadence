@@ -90,6 +90,9 @@ func (w *InitialWorker) Work(ctx context.Context, j *river.Job[InitialJobArgs]) 
 	pb, llmRes, err := GenerateInitial(ctx, w.coach, in)
 	if err != nil {
 		log.Error("plan.initial: generate failed", "err", err)
+		if coach.IsTerminal(err) {
+			return river.JobCancel(fmt.Errorf("generate initial: %w", err))
+		}
 		return fmt.Errorf("generate initial: %w", err)
 	}
 
@@ -199,6 +202,9 @@ func (w *WeeklyRefreshWorker) Work(ctx context.Context, j *river.Job[WeeklyRefre
 	pb, llmRes, err := GenerateWeekly(ctx, w.coach, in)
 	if err != nil {
 		log.Error("plan.weekly_refresh: generate failed", "err", err)
+		if coach.IsTerminal(err) {
+			return river.JobCancel(fmt.Errorf("generate weekly: %w", err))
+		}
 		return fmt.Errorf("generate weekly: %w", err)
 	}
 	planBytes, err := MarshalPlan(pb)

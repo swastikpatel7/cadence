@@ -6,6 +6,7 @@ import { RunnerSlider } from '@/components/onboarding/runner-slider';
 import { Button } from '@/components/ui/button';
 import { GlassCard } from '@/components/ui/glass-card';
 import { Spinner } from '@/components/ui/spinner';
+import { useUnits } from '@/components/units/units-context';
 import { browserFetch } from '@/lib/api-browser';
 import type {
   GoalFocus,
@@ -13,6 +14,7 @@ import type {
   UserGoal,
 } from '@/lib/api-client';
 import { cn } from '@/lib/cn';
+import { formatPace, formatWeeklyVolume } from '@/lib/units';
 
 interface Props {
   initial: UserGoal | null;
@@ -37,6 +39,7 @@ export function EditGoalCard({ initial }: Props) {
   const [open, setOpen] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const router = useRouter();
+  const { units } = useUnits();
 
   if (!initial) {
     return (
@@ -72,13 +75,13 @@ export function EditGoalCard({ initial }: Props) {
             GOAL
           </p>
           <h3 className="mt-1 text-[20px] font-medium leading-[1.1] tracking-[-0.02em] text-white">
-            {focus} · {initial.weekly_miles_target} mi/wk · {initial.days_per_week}d
+            {focus} · {formatWeeklyVolume(initial.weekly_miles_target, units)} · {initial.days_per_week}d
           </h3>
           {initial.target_distance_km && initial.target_pace_sec_per_km ? (
             <p className="mt-2 font-mono text-[10.5px] uppercase tracking-[0.18em] text-white/55">
               TARGET ·{' '}
               <span className="num">{initial.target_distance_km.toFixed(1)}</span>KM @{' '}
-              <span className="num">{formatPace(initial.target_pace_sec_per_km)}</span>/KM
+              <span className="num">{formatPace(initial.target_pace_sec_per_km, units)}</span>
             </p>
           ) : null}
 
@@ -123,6 +126,7 @@ function EditGoalModal({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const { units } = useUnits();
   const [focus, setFocus] = useState<GoalFocus>(initial.focus);
   const [miles, setMiles] = useState<number>(initial.weekly_miles_target);
   const [daysPerWeek, setDaysPerWeek] = useState<number>(initial.days_per_week);
@@ -227,7 +231,7 @@ function EditGoalModal({
               </div>
             </Section>
 
-            <Section label={`WEEKLY VOLUME · ${miles} MI/WK`}>
+            <Section label={`WEEKLY VOLUME · ${formatWeeklyVolume(miles, units).toUpperCase()}`}>
               <RunnerSlider
                 min={5}
                 max={80}
@@ -302,8 +306,3 @@ function Section({
   );
 }
 
-function formatPace(secPerKm: number): string {
-  const m = Math.floor(secPerKm / 60);
-  const s = secPerKm % 60;
-  return `${m}:${s.toString().padStart(2, '0')}`;
-}

@@ -5,7 +5,9 @@ import { useRouter } from 'next/navigation';
 import { useCallback, useMemo, useState } from 'react';
 import { StepFrame } from '@/components/onboarding/step-frame';
 import { useWizard } from '@/components/onboarding/wizard-context';
+import { useUnits } from '@/components/units/units-context';
 import { cn } from '@/lib/cn';
+import { KM_PER_MI, type Units } from '@/lib/units';
 
 interface DistOption {
   id: string;
@@ -23,9 +25,10 @@ const DIST_OPTIONS: DistOption[] = [
 
 export function TargetStep() {
   const { state, dispatch } = useWizard();
+  const { units } = useUnits();
   const router = useRouter();
   const [paceText, setPaceText] = useState<string>(() =>
-    formatPace(state.target_pace_sec_per_km),
+    formatPace(state.target_pace_sec_per_km, units),
   );
   const [paceError, setPaceError] = useState<string | null>(null);
 
@@ -78,18 +81,20 @@ export function TargetStep() {
       setPaceError(null);
       return;
     }
-    const sec = parsePaceToSec(paceText);
-    if (sec == null) {
-      setPaceError('Use M:SS — e.g. 4:30');
+    const secPerUserUnit = parsePaceToSec(paceText, units);
+    if (secPerUserUnit == null) {
+      setPaceError(units === 'imperial' ? 'Use M:SS — e.g. 7:15' : 'Use M:SS — e.g. 4:30');
       return;
     }
     setPaceError(null);
+    // Storage is canonical sec-per-km regardless of toggle.
+    const secPerKm = units === 'imperial' ? Math.round(secPerUserUnit / KM_PER_MI) : secPerUserUnit;
     dispatch({
       type: 'SET_FIELD',
       field: 'target_pace_sec_per_km',
-      value: sec,
+      value: secPerKm,
     });
-  }, [paceText, dispatch]);
+  }, [paceText, dispatch, units]);
 
   const handleSkip = useCallback(() => {
     dispatch({ type: 'SET_FIELD', field: 'target_distance_km', value: null });
@@ -200,14 +205,14 @@ export function TargetStep() {
               inputMode="numeric"
               autoComplete="off"
               spellCheck={false}
-              placeholder="4:30"
+              placeholder={units === 'imperial' ? '7:15' : '4:30'}
               value={paceText}
               onChange={(e) => setPaceText(e.currentTarget.value)}
               onBlur={handlePaceBlur}
               className="num h-11 w-24 rounded-full border border-white/10 bg-black/30 px-4 text-center text-[18px] text-white outline-none transition focus:border-white/30 focus:ring-2 focus:ring-white/20"
-              aria-label="Target pace per kilometre, in M:SS"
+              aria-label={`Target pace per ${units === 'imperial' ? 'mile' : 'kilometre'}, in M:SS`}
             />
-            <span className="display text-[18px] text-white/65">/ km</span>
+            <span className="display text-[18px] text-white/65">/ {units === 'imperial' ? 'mi' : 'km'}</span>
           </div>
 
           {paceError ? (
@@ -257,14 +262,17 @@ export function TargetStep() {
   );
 }
 
-function formatPace(secPerKm: number | null | undefined): string {
+function formatPace(secPerKm: number | null | undefined, units: Units): string {
   if (!secPerKm || secPerKm <= 0) return '';
-  const m = Math.floor(secPerKm / 60);
-  const s = secPerKm % 60;
+  const secPerUnit = units === 'imperial' ? Math.round(secPerKm * KM_PER_MI) : secPerKm;
+  const m = Math.floor(secPerUnit / 60);
+  const s = secPerUnit % 60;
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-function parsePaceToSec(input: string): number | null {
+// Returns seconds per *user-facing* unit (mi when imperial, km when metric).
+// Caller is responsible for converting to the canonical sec-per-km storage.
+function parsePaceToSec(input: string, units: Units): number | null {
   const m = /^(\d{1,2}):(\d{2})$/.exec(input.trim());
   if (!m) return null;
   const min = Number(m[1]);
@@ -272,7 +280,11 @@ function parsePaceToSec(input: string): number | null {
   if (Number.isNaN(min) || Number.isNaN(sec)) return null;
   if (sec >= 60) return null;
   const total = min * 60 + sec;
-  if (total < 180 || total > 900) return null; // 3:00..15:00 per km
+  // Sanity bounds in the user's unit. Per-km: 3:00..15:00 (180..900s).
+  // Per-mi: 4:50..24:08 — derived by scaling the per-km bound by KM_PER_MI.
+  const lower = units === 'imperial' ? 180 * KM_PER_MI : 180;
+  const upper = units === 'imperial' ? 900 * KM_PER_MI : 900;
+  if (total < lower || total > upper) return null;
   return total;
 }
 

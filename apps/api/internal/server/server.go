@@ -88,6 +88,7 @@ func New(d Deps) (*http.Server, error) {
 		authed := huma.NewGroup(api)
 		authed.UseMiddleware(d.Verifier.HumaMiddleware(api))
 		handlers.RegisterMe(authed, d.Queries)
+		handlers.RegisterProfile(authed, d.Queries)
 
 		// Strava OAuth callback is registered on the public api (no Clerk
 		// JWT — the OAuth state token is the auth) while start, disconnect,

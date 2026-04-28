@@ -1,5 +1,9 @@
+'use client';
+
 import { GlassCard } from '@/components/ui/glass-card';
+import { useUnits } from '@/components/units/units-context';
 import type { RecentActivity } from '@/lib/api-client';
+import { formatDistanceMeters } from '@/lib/units';
 
 interface Props {
   recent: RecentActivity[];
@@ -10,6 +14,7 @@ interface Props {
  * user can confirm their data really is in Cadence (not just a row count).
  */
 export function RecentActivities({ recent }: Props) {
+  const { units } = useUnits();
   if (recent.length === 0) {
     return (
       <GlassCard className="p-7">
@@ -52,7 +57,9 @@ export function RecentActivities({ recent }: Props) {
               </p>
             </div>
             <p className="num shrink-0 text-[13px] text-white/75">
-              {formatDistance(a.distance_meters)}
+              {a.distance_meters && a.distance_meters > 0
+                ? formatDistanceMeters(a.distance_meters, units)
+                : '—'}
             </p>
           </li>
         ))}
@@ -83,9 +90,3 @@ function formatDate(iso: string): string {
   });
 }
 
-function formatDistance(meters: number | null | undefined): string {
-  if (!meters || meters <= 0) return '—';
-  const km = meters / 1000;
-  if (km < 10) return `${km.toFixed(2)} km`;
-  return `${km.toFixed(1)} km`;
-}
