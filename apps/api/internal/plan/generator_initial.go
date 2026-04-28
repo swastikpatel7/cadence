@@ -27,7 +27,8 @@ Constraints:
 - The first week.start_date must equal the supplied "first_monday" date.
 - Each session.date is YYYY-MM-DD and must fall on the corresponding week.
 - Sum the per-week distance into total_km.
-- 8 weeks total.`
+- 8 weeks total. week_index runs 0..7 inclusive (week 0 is first_monday).
+- All distances are non-negative kilometers.`
 
 // initialPlanSchema is the strict JSON-schema the model is bound to.
 var initialPlanSchema = map[string]any{
@@ -40,9 +41,14 @@ var initialPlanSchema = map[string]any{
 			"items": map[string]any{
 				"type": "object",
 				"properties": map[string]any{
-					"week_index": map[string]any{"type": "integer", "minimum": 0, "maximum": 7},
+					// Bounds intentionally omitted from the schema — Anthropic's
+					// structured-output API rejects `minimum`/`maximum` on
+					// integer types and is undocumented for `number`. Bounds
+					// are stated in the system prompt and re-checked in
+					// parsePlanBlob.
+					"week_index": map[string]any{"type": "integer"},
 					"start_date": map[string]any{"type": "string", "format": "date"},
-					"total_km":   map[string]any{"type": "number", "minimum": 0},
+					"total_km":   map[string]any{"type": "number"},
 					"sessions": map[string]any{
 						"type": "array",
 						"items": map[string]any{
@@ -50,7 +56,7 @@ var initialPlanSchema = map[string]any{
 							"properties": map[string]any{
 								"date":                    map[string]any{"type": "string", "format": "date"},
 								"type":                    map[string]any{"type": "string", "enum": []string{"easy", "tempo", "intervals", "long", "recovery", "race_pace"}},
-								"distance_km":             map[string]any{"type": "number", "minimum": 0},
+								"distance_km":             map[string]any{"type": "number"},
 								"intensity":               map[string]any{"type": "string", "enum": []string{"easy", "moderate", "hard"}},
 								"pace_target_sec_per_km":  map[string]any{"type": "integer"},
 								"duration_min_target":     map[string]any{"type": "integer"},
@@ -192,6 +198,22 @@ func parsePlanBlob(raw string) (*PlanBlob, error) {
 	}
 	if len(pb.Weeks) == 0 {
 		return nil, fmt.Errorf("empty weeks")
+	}
+	// Bound checks the schema can no longer express. Anthropic 4xx-rejects
+	// `minimum`/`maximum` on integer/number types in structured output, so
+	// the safety net moves here. Parse-twice retry covers transient strays.
+	for i, w := range pb.Weeks {
+		if w.WeekIndex < 0 || w.WeekIndex > 7 {
+			return nil, fmt.Errorf("week %d: week_index %d out of range 0..7", i, w.WeekIndex)
+		}
+		if w.TotalKM < 0 {
+			return nil, fmt.Errorf("week %d: total_km %f is negative", i, w.TotalKM)
+		}
+		for j, sess := range w.Sessions {
+			if sess.DistanceKM < 0 {
+				return nil, fmt.Errorf("week %d session %d: distance_km %f is negative", i, j, sess.DistanceKM)
+			}
+		}
 	}
 	return &pb, nil
 }

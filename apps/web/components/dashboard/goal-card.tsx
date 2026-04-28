@@ -1,5 +1,9 @@
+'use client';
+
 import { GlassCard } from '@/components/ui/glass-card';
+import { useUnits } from '@/components/units/units-context';
 import type { Baseline, HeatmapWeek, UserGoal } from '@/lib/api-client';
+import { formatPace, KM_PER_MI, milesToKm } from '@/lib/units';
 
 interface Props {
   goal: UserGoal;
@@ -7,8 +11,6 @@ interface Props {
   /** This week's row (Mon..Sun). Used to derive completed-volume so far. */
   thisWeek: HeatmapWeek | null;
 }
-
-const KM_PER_MILE = 1.609344;
 
 /**
  * Goal card on /home. Two surfaces:
@@ -21,12 +23,15 @@ const KM_PER_MILE = 1.609344;
  *      that the plan is in service of a number.
  */
 export function GoalCard({ goal, baseline, thisWeek }: Props) {
+  const { units } = useUnits();
   const completedKm = thisWeek
     ? thisWeek.reduce((acc, c) => acc + (c.actual?.distance_km ?? 0), 0)
     : 0;
-  const completedMiles = completedKm / KM_PER_MILE;
-  const targetMiles = goal.weekly_miles_target;
-  const pct = Math.min(100, Math.max(0, (completedMiles / targetMiles) * 100));
+  const targetKm = milesToKm(goal.weekly_miles_target);
+  const completedDisplay = units === 'imperial' ? completedKm / KM_PER_MI : completedKm;
+  const targetDisplay = units === 'imperial' ? goal.weekly_miles_target : targetKm;
+  const unitLabel = units === 'imperial' ? 'mi' : 'km';
+  const pct = Math.min(100, Math.max(0, (completedKm / targetKm) * 100));
 
   const focusLabel = FOCUS_LABEL[goal.focus];
 
@@ -51,9 +56,9 @@ export function GoalCard({ goal, baseline, thisWeek }: Props) {
           THIS WEEK · {focusLabel}
         </p>
         <h3 className="mt-2 text-[20px] font-medium leading-[1.1] tracking-[-0.02em] text-white">
-          {completedMiles.toFixed(1)}{' '}
-          <span className="text-white/40">/ {targetMiles}</span>{' '}
-          <span className="display text-[22px] text-white/55">mi</span>
+          {completedDisplay.toFixed(1)}{' '}
+          <span className="text-white/40">/ {Math.round(targetDisplay)}</span>{' '}
+          <span className="display text-[22px] text-white/55">{unitLabel}</span>
         </h3>
 
         <div className="mt-5 h-1.5 w-full overflow-hidden rounded-full bg-white/[0.06]">
@@ -71,32 +76,50 @@ export function GoalCard({ goal, baseline, thisWeek }: Props) {
 
         <div className="mt-3 flex flex-wrap items-center justify-between gap-3 font-mono text-[10.5px] uppercase tracking-[0.18em] text-white/45">
           <span>{Math.round(pct)}% COMPLETE</span>
-          <span>{(targetMiles - completedMiles).toFixed(1)} MI TO GO</span>
+          <span>{Math.max(0, targetDisplay - completedDisplay).toFixed(1)} {unitLabel.toUpperCase()} TO GO</span>
         </div>
 
         {paceDeltaSec !== null ? (
-          <PaceGapPill deltaSec={paceDeltaSec} />
+          <PaceGapPill deltaSec={paceDeltaSec} units={units} baselineSecPerKm={baseline?.avg_pace_sec_per_km ?? null} targetSecPerKm={goal.target_pace_sec_per_km ?? null} />
         ) : null}
       </div>
     </GlassCard>
   );
 }
 
-function PaceGapPill({ deltaSec }: { deltaSec: number }) {
+function PaceGapPill({
+  deltaSec,
+  units,
+  baselineSecPerKm,
+  targetSecPerKm,
+}: {
+  deltaSec: number;
+  units: 'metric' | 'imperial';
+  baselineSecPerKm: number | null;
+  targetSecPerKm: number | null;
+}) {
   const slower = deltaSec > 0;
-  const abs = Math.abs(deltaSec);
   const sign = slower ? '+' : '−';
+  // For imperial, the per-km delta becomes per-mile by multiplying by KM_PER_MI.
+  const displayUnitSec = units === 'imperial' ? Math.abs(deltaSec * KM_PER_MI) : Math.abs(deltaSec);
+  const unitSuffix = units === 'imperial' ? 's/mi' : 's/km';
+  // Surface concrete pace strings on the tooltip-ish second line.
+  const baselinePace =
+    baselineSecPerKm != null ? formatPace(baselineSecPerKm, units) : null;
+  const targetPace = targetSecPerKm != null ? formatPace(targetSecPerKm, units) : null;
   return (
-    <div className="mt-5 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-3 py-1.5 backdrop-blur-md">
+    <div className="mt-5 inline-flex flex-wrap items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-3 py-1.5 backdrop-blur-md">
       <span className="font-mono text-[10.5px] uppercase tracking-[0.18em] text-white/45">
         PACE GAP
       </span>
       <span
         className="num text-[12.5px]"
         style={{ color: slower ? 'var(--color-warning)' : 'var(--color-success)' }}
+        title={baselinePace && targetPace ? `${baselinePace} → ${targetPace}` : undefined}
       >
         {sign}
-        {abs}s/km
+        {Math.round(displayUnitSec)}
+        {unitSuffix}
       </span>
       <span className="font-mono text-[10.5px] uppercase tracking-[0.18em] text-white/45">
         {slower ? 'TO TARGET' : 'AHEAD'}

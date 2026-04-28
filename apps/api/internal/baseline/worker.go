@@ -99,13 +99,14 @@ func (w *Worker) Work(ctx context.Context, j *river.Job[JobArgs]) error {
 
 	narrative, llmRes, err := Narrate(ctx, w.coach, num)
 	if err != nil {
-		// The Anthropic SDK returns wrapped errors for HTTP failures.
-		// We don't have a typed AuthError yet; fall back to a generic
-		// "treat as transient" path. 429/503 → snooze handled by the
-		// SDK retry policy where possible; otherwise River's default
-		// exponential backoff covers us. For 401 we'd want to mark
-		// terminal — once the SDK exposes typed errors, branch here.
 		log.Error("baseline: narrate failed", "err", err)
+		// Terminal Anthropic 4xx (e.g. schema-validation 400, auth 401):
+		// retrying won't fix it. Cancel the job so River discards it
+		// immediately — the SSE handler then surfaces a clean error to
+		// the user instead of letting the JWT expire under retry storm.
+		if coach.IsTerminal(err) {
+			return river.JobCancel(fmt.Errorf("narrate: %w", err))
+		}
 		return fmt.Errorf("narrate: %w", err)
 	}
 

@@ -148,9 +148,11 @@ func pollOnboardingProgress(
 		// the sync stage has happened (because the worker only proceeds
 		// past the initial CountActivities check when count > 0).
 		// scheduled or available pre-run-1 might be sync-pending → we
-		// still emit in_flight.
+		// still emit in_flight. `cancelled` is treated like `discarded`
+		// here: the worker reached at least the start of stage 3 to
+		// surface an Anthropic 4xx, so sync was satisfied.
 		switch baselineRow.state {
-		case "running", "completed", "retryable", "discarded":
+		case "running", "completed", "retryable", "discarded", "cancelled":
 			updates = appendIfChanged(updates, tracker, stepSync, stateDone)
 			syncDone = true
 			tracker[stepSync] = stateDone
@@ -167,13 +169,15 @@ func pollOnboardingProgress(
 		switch baselineRow.state {
 		case "running":
 			updates = appendIfChanged(updates, tracker, stepVolumeCurve, stateInFlight)
-		case "completed", "retryable", "discarded":
+		case "completed", "retryable", "discarded", "cancelled":
 			updates = appendIfChanged(updates, tracker, stepVolumeCurve, stateDone)
 			tracker[stepVolumeCurve] = stateDone
 		}
 	}
 
-	// Stage 3: baseline narrative. Maps directly to job state.
+	// Stage 3: baseline narrative. Maps directly to job state. `cancelled`
+	// is the terminal-failure signal we now use for Anthropic 4xx — same
+	// UX as `discarded` (the older retry-exhausted path).
 	if baselineExists {
 		switch baselineRow.state {
 		case "available", "scheduled":
@@ -182,7 +186,7 @@ func pollOnboardingProgress(
 			updates = appendIfChanged(updates, tracker, stepBaseline, stateInFlight)
 		case "completed":
 			updates = appendIfChanged(updates, tracker, stepBaseline, stateDone)
-		case "discarded":
+		case "discarded", "cancelled":
 			baselineErr = baselineRow.errMsg
 			updates = appendIfChangedWithError(updates, tracker, stepBaseline, stateError, baselineErr)
 		}
@@ -197,7 +201,7 @@ func pollOnboardingProgress(
 			updates = appendIfChanged(updates, tracker, stepPlan, stateInFlight)
 		case "completed":
 			updates = appendIfChanged(updates, tracker, stepPlan, stateDone)
-		case "discarded":
+		case "discarded", "cancelled":
 			planErr = planRow.errMsg
 			updates = appendIfChangedWithError(updates, tracker, stepPlan, stateError, planErr)
 		}
@@ -206,16 +210,24 @@ func pollOnboardingProgress(
 	// Terminal: both jobs reached a terminal state. If plan job hasn't
 	// even shown up yet, we are not terminal — the chained insert from
 	// BaselineComputeWorker may be in flight.
-	baselineTerminal := baselineExists && (baselineRow.state == "completed" || baselineRow.state == "discarded")
-	planTerminal := planExists && (planRow.state == "completed" || planRow.state == "discarded")
+	baselineTerminal := baselineExists && isJobTerminal(baselineRow.state)
+	planTerminal := planExists && isJobTerminal(planRow.state)
 	if baselineTerminal && planTerminal {
 		terminal = true
 	}
-	if baselineTerminal && baselineRow.state == "discarded" && !planExists {
+	if baselineTerminal && isJobFailed(baselineRow.state) && !planExists {
 		// Baseline failed and never produced a plan; terminate the stream.
 		terminal = true
 	}
 	return
+}
+
+func isJobTerminal(state string) bool {
+	return state == "completed" || state == "discarded" || state == "cancelled"
+}
+
+func isJobFailed(state string) bool {
+	return state == "discarded" || state == "cancelled"
 }
 
 // loadLatestJob returns the most recent river_job row for (kind,

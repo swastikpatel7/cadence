@@ -1,5 +1,9 @@
+'use client';
+
 import { GlassCard } from '@/components/ui/glass-card';
+import { useUnits } from '@/components/units/units-context';
 import type { HeatmapCell, HeatmapWeek, PrescribedLoad } from '@/lib/api-client';
+import { formatDistance } from '@/lib/units';
 
 interface Props {
   /** All weeks from the heatmap response — we find today inside. */
@@ -18,6 +22,7 @@ interface Props {
  *      window).
  */
 export function TodaysSession({ weeks }: Props) {
+  const { units } = useUnits();
   const today = findToday(weeks);
   if (!today) {
     return (
@@ -84,8 +89,7 @@ export function TodaysSession({ weeks }: Props) {
           {today.prescribed_distance_km ? (
             <>
               {' '}
-              <span className="num text-white/85">{today.prescribed_distance_km}</span>
-              <span className="text-white/55"> km</span>
+              <span className="num text-white/85">{formatDistance(today.prescribed_distance_km, units)}</span>
             </>
           ) : null}
         </h2>

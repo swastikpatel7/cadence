@@ -2,9 +2,11 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { Spinner } from '@/components/ui/spinner';
+import { useUnits } from '@/components/units/units-context';
 import { browserFetch } from '@/lib/api-browser';
 import { ApiError, type HeatmapCell, type SessionDetail } from '@/lib/api-client';
 import { cn } from '@/lib/cn';
+import { formatDistance, formatPace, type Units } from '@/lib/units';
 
 interface Props {
   cell: HeatmapCell | null;
@@ -124,6 +126,7 @@ function DrawerBody({
   error: string | null;
   onClose: () => void;
 }) {
+  const { units } = useUnits();
   const date = new Date(`${cell.date}T00:00:00Z`).toLocaleDateString('en-US', {
     weekday: 'long',
     month: 'long',
@@ -176,11 +179,11 @@ function DrawerBody({
             <Spinner size={12} /> Loading session…
           </div>
         ) : detail ? (
-          <PrescribedBlock detail={detail} />
+          <PrescribedBlock detail={detail} units={units} />
         ) : cell.prescribed_load === 'rest' ? (
           <p className="mt-3 text-[14px] text-white/65">Rest day. Recovery is training.</p>
         ) : (
-          <PrescribedBlockFromCell cell={cell} />
+          <PrescribedBlockFromCell cell={cell} units={units} />
         )}
       </section>
 
@@ -191,9 +194,9 @@ function DrawerBody({
             ACTUAL
           </p>
           {detail?.actual ? (
-            <ActualBlock actual={detail.actual} />
+            <ActualBlock actual={detail.actual} units={units} />
           ) : (
-            <ActualBlockFromCell cell={cell} />
+            <ActualBlockFromCell cell={cell} units={units} />
           )}
         </section>
       ) : null}
@@ -216,20 +219,20 @@ function DrawerBody({
   );
 }
 
-function PrescribedBlock({ detail }: { detail: SessionDetail }) {
+function PrescribedBlock({ detail, units }: { detail: SessionDetail; units: Units }) {
   const p = detail.prescribed;
-  const pace = p.pace_target_sec_per_km ? formatPace(p.pace_target_sec_per_km) : null;
+  const pace = p.pace_target_sec_per_km ? formatPace(p.pace_target_sec_per_km, units) : null;
   return (
     <div className="mt-3 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
       <div className="flex items-baseline gap-2">
         <span className="display text-[28px] capitalize text-white">{p.type.replace('_', ' ')}</span>
         <span className="num text-[16px] text-white/65">
-          · {p.distance_km.toFixed(p.distance_km < 10 ? 1 : 0)} km
+          · {formatDistance(p.distance_km, units)}
         </span>
       </div>
       <div className="mt-3 grid grid-cols-2 gap-3 text-[13px]">
         {pace ? (
-          <Field label="PACE" value={`${pace}/km`} />
+          <Field label="PACE" value={pace} />
         ) : (
           <Field label="INTENSITY" value={p.intensity} />
         )}
@@ -244,7 +247,7 @@ function PrescribedBlock({ detail }: { detail: SessionDetail }) {
   );
 }
 
-function PrescribedBlockFromCell({ cell }: { cell: HeatmapCell }) {
+function PrescribedBlockFromCell({ cell, units }: { cell: HeatmapCell; units: Units }) {
   return (
     <div className="mt-3 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
       <div className="flex items-baseline gap-2">
@@ -252,7 +255,7 @@ function PrescribedBlockFromCell({ cell }: { cell: HeatmapCell }) {
           {cell.prescribed_type ?? cell.prescribed_load}
         </span>
         {cell.prescribed_distance_km ? (
-          <span className="num text-[14px] text-white/65">· {cell.prescribed_distance_km} km</span>
+          <span className="num text-[14px] text-white/65">· {formatDistance(cell.prescribed_distance_km, units)}</span>
         ) : null}
       </div>
       <p className="mt-2 text-[12.5px] text-white/55">
@@ -264,14 +267,16 @@ function PrescribedBlockFromCell({ cell }: { cell: HeatmapCell }) {
 
 function ActualBlock({
   actual,
+  units,
 }: {
   actual: NonNullable<SessionDetail['actual']>;
+  units: Units;
 }) {
   return (
     <div className="mt-3 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
       <div className="grid grid-cols-2 gap-3 text-[13px]">
-        <Field label="DISTANCE" value={`${actual.distance_km.toFixed(2)} km`} />
-        <Field label="PACE" value={`${formatPace(actual.avg_pace_sec_per_km)}/km`} />
+        <Field label="DISTANCE" value={formatDistance(actual.distance_km, units)} />
+        <Field label="PACE" value={formatPace(actual.avg_pace_sec_per_km, units)} />
         <Field label="DURATION" value={formatHMS(actual.duration_seconds)} />
         <Field
           label="VS PRESCRIBED"
@@ -289,13 +294,13 @@ function ActualBlock({
   );
 }
 
-function ActualBlockFromCell({ cell }: { cell: HeatmapCell }) {
+function ActualBlockFromCell({ cell, units }: { cell: HeatmapCell; units: Units }) {
   if (!cell.actual) return null;
   return (
     <div className="mt-3 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
       <div className="grid grid-cols-2 gap-3 text-[13px]">
-        <Field label="DISTANCE" value={`${cell.actual.distance_km.toFixed(2)} km`} />
-        <Field label="PACE" value={`${formatPace(cell.actual.avg_pace_sec_per_km)}/km`} />
+        <Field label="DISTANCE" value={formatDistance(cell.actual.distance_km, units)} />
+        <Field label="PACE" value={formatPace(cell.actual.avg_pace_sec_per_km, units)} />
         <Field label="VS PRESCRIBED" value={cell.actual.matched.toUpperCase()} tone="good" />
       </div>
     </div>
@@ -321,12 +326,6 @@ function Field({
       <p className={`num mt-1 ${valColor}`}>{value}</p>
     </div>
   );
-}
-
-function formatPace(secPerKm: number): string {
-  const m = Math.floor(secPerKm / 60);
-  const s = secPerKm % 60;
-  return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
 function formatHMS(totalSec: number): string {

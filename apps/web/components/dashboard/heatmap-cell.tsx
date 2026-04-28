@@ -1,8 +1,10 @@
 'use client';
 
 import { type CSSProperties, forwardRef } from 'react';
+import { useUnits } from '@/components/units/units-context';
 import type { HeatmapCell as HeatmapCellType, PrescribedLoad } from '@/lib/api-client';
 import { cn } from '@/lib/cn';
+import { formatDistance, type Units } from '@/lib/units';
 
 interface Props {
   cell: HeatmapCellType;
@@ -48,7 +50,11 @@ export const HeatmapCellView = forwardRef<HTMLButtonElement, Props>(function Hea
     animationDelay: `${rowIdx * 50 + colIdx * 18}ms`,
   };
 
-  const tooltipText = buildTooltipText(cell);
+  const { units } = useUnits();
+  const tooltipText = buildTooltipText(cell, units);
+  const distanceLabel = cell.prescribed_distance_km
+    ? formatDistance(cell.prescribed_distance_km, units)
+    : null;
 
   return (
     <button
@@ -56,7 +62,7 @@ export const HeatmapCellView = forwardRef<HTMLButtonElement, Props>(function Hea
       type="button"
       onClick={onClick}
       aria-label={`${cell.date} · ${cell.prescribed_load}${
-        cell.prescribed_distance_km ? ` · ${cell.prescribed_distance_km} km` : ''
+        distanceLabel ? ` · ${distanceLabel}` : ''
       }`}
       className={cn(
         'group/cell relative outline-none transition-transform duration-200',
@@ -160,7 +166,7 @@ const LOAD_RING: Record<PrescribedLoad, string> = {
   peak: 'oklch(0.88 0.14 60 / 0.70)',
 };
 
-function buildTooltipText(cell: HeatmapCellType): string {
+function buildTooltipText(cell: HeatmapCellType, units: Units): string {
   const date = new Date(`${cell.date}T00:00:00Z`).toLocaleDateString('en-US', {
     weekday: 'short',
     month: 'short',
@@ -168,9 +174,9 @@ function buildTooltipText(cell: HeatmapCellType): string {
     timeZone: 'UTC',
   });
   if (cell.prescribed_load === 'rest') return `${date} · rest`;
-  const km = cell.prescribed_distance_km
-    ? ` · ${cell.prescribed_distance_km}km`
+  const dist = cell.prescribed_distance_km
+    ? ` · ${formatDistance(cell.prescribed_distance_km, units)}`
     : '';
   const type = cell.prescribed_type ? ` ${cell.prescribed_type}` : '';
-  return `${date}${type}${km}`;
+  return `${date}${type}${dist}`;
 }

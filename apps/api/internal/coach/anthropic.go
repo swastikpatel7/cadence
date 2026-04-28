@@ -182,6 +182,31 @@ func (c *Client) Send(ctx context.Context, params anthropic.MessageNewParams) (*
 	return out, nil
 }
 
+// IsTerminal reports whether err is a non-retryable Anthropic API error.
+// We mark 4xx responses (except 408 Request Timeout, 425 Too Early, and
+// 429 Too Many Requests) as terminal — those are client-side bugs that
+// retrying won't fix and that previously caused River's default policy
+// to thrash for ~16 hours, eventually surfacing as a Clerk-token-expiry
+// 401 in the onboarding UI. Anthropic 5xx and the three transient 4xx
+// codes stay retryable.
+//
+// Returns false on nil and on non-Anthropic errors so callers can
+// branch unconditionally.
+func IsTerminal(err error) bool {
+	if err == nil {
+		return false
+	}
+	var apiErr *anthropic.Error
+	if !errors.As(err, &apiErr) {
+		return false
+	}
+	switch apiErr.StatusCode {
+	case 408, 425, 429:
+		return false
+	}
+	return apiErr.StatusCode >= 400 && apiErr.StatusCode < 500
+}
+
 // SystemBlockWithCache builds the system-prompt slice every worker
 // uses: a single TextBlockParam carrying the prompt with an ephemeral
 // cache breakpoint attached. Concurrent users hitting the same prompt
