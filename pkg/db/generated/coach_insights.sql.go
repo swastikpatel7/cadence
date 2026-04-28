@@ -11,9 +11,23 @@ import (
 	"github.com/google/uuid"
 )
 
+const archiveCoachInsightsByUserID = `-- name: ArchiveCoachInsightsByUserID :exec
+UPDATE coach_insights SET archived_at = now()
+ WHERE user_id = $1 AND archived_at IS NULL
+`
+
+// Used by POST /v1/me/onboarding/reset. Soft-deletes all of a user's
+// micro-summaries. After reset, the next session-detail open will
+// regenerate via Haiku (or hit the partial-unique safely beside the
+// archived row).
+func (q *Queries) ArchiveCoachInsightsByUserID(ctx context.Context, userID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, archiveCoachInsightsByUserID, userID)
+	return err
+}
+
 const getInsightForActivity = `-- name: GetInsightForActivity :one
-SELECT id, user_id, activity_id, kind, body, model, input_tokens, output_tokens, created_at FROM coach_insights
-WHERE activity_id = $1 AND kind = $2
+SELECT id, user_id, activity_id, kind, body, model, input_tokens, output_tokens, created_at, archived_at FROM coach_insights
+WHERE activity_id = $1 AND kind = $2 AND archived_at IS NULL
 `
 
 type GetInsightForActivityParams struct {
@@ -22,6 +36,7 @@ type GetInsightForActivityParams struct {
 }
 
 // Used by the session-detail handler to read the cached micro-summary.
+// Filters out archived rows from a prior onboarding cycle.
 func (q *Queries) GetInsightForActivity(ctx context.Context, arg GetInsightForActivityParams) (CoachInsight, error) {
 	row := q.db.QueryRow(ctx, getInsightForActivity, arg.ActivityID, arg.Kind)
 	var i CoachInsight
@@ -35,6 +50,7 @@ func (q *Queries) GetInsightForActivity(ctx context.Context, arg GetInsightForAc
 		&i.InputTokens,
 		&i.OutputTokens,
 		&i.CreatedAt,
+		&i.ArchivedAt,
 	)
 	return i, err
 }
@@ -42,13 +58,13 @@ func (q *Queries) GetInsightForActivity(ctx context.Context, arg GetInsightForAc
 const insertInsight = `-- name: InsertInsight :one
 INSERT INTO coach_insights (user_id, activity_id, kind, body, model, input_tokens, output_tokens)
 VALUES ($1, $2, $3, $4, $5, $6, $7)
-ON CONFLICT (activity_id, kind) DO UPDATE
+ON CONFLICT (activity_id, kind) WHERE archived_at IS NULL DO UPDATE
 SET body          = EXCLUDED.body,
     model         = EXCLUDED.model,
     input_tokens  = EXCLUDED.input_tokens,
     output_tokens = EXCLUDED.output_tokens,
     created_at    = now()
-RETURNING id, user_id, activity_id, kind, body, model, input_tokens, output_tokens, created_at
+RETURNING id, user_id, activity_id, kind, body, model, input_tokens, output_tokens, created_at, archived_at
 `
 
 type InsertInsightParams struct {
@@ -61,7 +77,10 @@ type InsertInsightParams struct {
 	OutputTokens int32
 }
 
-// Used by SessionMicroSummaryWorker. Idempotent on (activity_id, kind).
+// Used by SessionMicroSummaryWorker. Idempotent on the *active*
+// (activity_id, kind) pair. The migration rebuilt the UNIQUE index as
+// partial on `WHERE archived_at IS NULL`, so the ON CONFLICT clause
+// must echo that predicate to find the partial index.
 func (q *Queries) InsertInsight(ctx context.Context, arg InsertInsightParams) (CoachInsight, error) {
 	row := q.db.QueryRow(ctx, insertInsight,
 		arg.UserID,
@@ -83,6 +102,7 @@ func (q *Queries) InsertInsight(ctx context.Context, arg InsertInsightParams) (C
 		&i.InputTokens,
 		&i.OutputTokens,
 		&i.CreatedAt,
+		&i.ArchivedAt,
 	)
 	return i, err
 }

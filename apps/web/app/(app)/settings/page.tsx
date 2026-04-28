@@ -3,6 +3,7 @@ import { ConnectionCard } from '@/components/settings/connection-card';
 import { EditGoalCard } from '@/components/settings/edit-goal-card';
 import { RecalculateBaselineCard } from '@/components/settings/recalculate-baseline-card';
 import { RecentActivities } from '@/components/settings/recent-activities';
+import { ResetOnboardingCard } from '@/components/settings/reset-onboarding-card';
 import { SyncCard } from '@/components/settings/sync-card';
 import { GlassCard } from '@/components/ui/glass-card';
 import { ApiError, type Baseline, type SyncStatus, type UserGoal } from '@/lib/api-client';
@@ -86,6 +87,7 @@ function ClientShell({
         <SyncCard initial={initial} />
         <EditGoalCard initial={goal} />
         <RecalculateBaselineCard initial={baseline} />
+        <ResetOnboardingCard />
       </div>
       <RecentActivities recent={initial.recent} />
     </div>

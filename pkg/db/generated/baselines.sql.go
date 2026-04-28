@@ -12,14 +12,28 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const archiveBaselinesByUserID = `-- name: ArchiveBaselinesByUserID :exec
+UPDATE baselines SET archived_at = now()
+ WHERE user_id = $1 AND archived_at IS NULL
+`
+
+// Used by POST /v1/me/onboarding/reset. Soft-deletes all of a user's
+// baselines so a fresh wizard run starts with no history visible. The
+// archived rows remain in-table for cost auditing.
+func (q *Queries) ArchiveBaselinesByUserID(ctx context.Context, userID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, archiveBaselinesByUserID, userID)
+	return err
+}
+
 const getLatestBaselineByUserID = `-- name: GetLatestBaselineByUserID :one
-SELECT id, user_id, window_days, computed_at, fitness_tier, weekly_volume_km_avg, weekly_volume_km_p25, weekly_volume_km_p75, avg_pace_sec_per_km, avg_pace_at_distance, longest_run_km, consistency_score, narrative, source, model, input_tokens, output_tokens, thinking_tokens FROM baselines
-WHERE user_id = $1
+SELECT id, user_id, window_days, computed_at, fitness_tier, weekly_volume_km_avg, weekly_volume_km_p25, weekly_volume_km_p75, avg_pace_sec_per_km, avg_pace_at_distance, longest_run_km, consistency_score, narrative, source, model, input_tokens, output_tokens, thinking_tokens, archived_at FROM baselines
+WHERE user_id = $1 AND archived_at IS NULL
 ORDER BY computed_at DESC
 LIMIT 1
 `
 
-// Backs GET /v1/me/baseline. Index `baselines_user_recent` covers this.
+// Backs GET /v1/me/baseline. Partial index `baselines_user_recent`
+// (WHERE archived_at IS NULL) covers this.
 func (q *Queries) GetLatestBaselineByUserID(ctx context.Context, userID uuid.UUID) (Baseline, error) {
 	row := q.db.QueryRow(ctx, getLatestBaselineByUserID, userID)
 	var i Baseline
@@ -42,6 +56,7 @@ func (q *Queries) GetLatestBaselineByUserID(ctx context.Context, userID uuid.UUI
 		&i.InputTokens,
 		&i.OutputTokens,
 		&i.ThinkingTokens,
+		&i.ArchivedAt,
 	)
 	return i, err
 }
@@ -55,7 +70,7 @@ INSERT INTO baselines (
     model, input_tokens, output_tokens, thinking_tokens
 )
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
-RETURNING id, user_id, window_days, computed_at, fitness_tier, weekly_volume_km_avg, weekly_volume_km_p25, weekly_volume_km_p75, avg_pace_sec_per_km, avg_pace_at_distance, longest_run_km, consistency_score, narrative, source, model, input_tokens, output_tokens, thinking_tokens
+RETURNING id, user_id, window_days, computed_at, fitness_tier, weekly_volume_km_avg, weekly_volume_km_p25, weekly_volume_km_p75, avg_pace_sec_per_km, avg_pace_at_distance, longest_run_km, consistency_score, narrative, source, model, input_tokens, output_tokens, thinking_tokens, archived_at
 `
 
 type InsertBaselineParams struct {
@@ -118,13 +133,14 @@ func (q *Queries) InsertBaseline(ctx context.Context, arg InsertBaselineParams) 
 		&i.InputTokens,
 		&i.OutputTokens,
 		&i.ThinkingTokens,
+		&i.ArchivedAt,
 	)
 	return i, err
 }
 
 const listBaselinesByUserID = `-- name: ListBaselinesByUserID :many
-SELECT id, user_id, window_days, computed_at, fitness_tier, weekly_volume_km_avg, weekly_volume_km_p25, weekly_volume_km_p75, avg_pace_sec_per_km, avg_pace_at_distance, longest_run_km, consistency_score, narrative, source, model, input_tokens, output_tokens, thinking_tokens FROM baselines
-WHERE user_id = $1
+SELECT id, user_id, window_days, computed_at, fitness_tier, weekly_volume_km_avg, weekly_volume_km_p25, weekly_volume_km_p75, avg_pace_sec_per_km, avg_pace_at_distance, longest_run_km, consistency_score, narrative, source, model, input_tokens, output_tokens, thinking_tokens, archived_at FROM baselines
+WHERE user_id = $1 AND archived_at IS NULL
 ORDER BY computed_at DESC
 LIMIT $2
 `
@@ -163,6 +179,7 @@ func (q *Queries) ListBaselinesByUserID(ctx context.Context, arg ListBaselinesBy
 			&i.InputTokens,
 			&i.OutputTokens,
 			&i.ThinkingTokens,
+			&i.ArchivedAt,
 		); err != nil {
 			return nil, err
 		}

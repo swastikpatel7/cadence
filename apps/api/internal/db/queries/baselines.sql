@@ -12,15 +12,23 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
 RETURNING *;
 
 -- name: GetLatestBaselineByUserID :one
--- Backs GET /v1/me/baseline. Index `baselines_user_recent` covers this.
+-- Backs GET /v1/me/baseline. Partial index `baselines_user_recent`
+-- (WHERE archived_at IS NULL) covers this.
 SELECT * FROM baselines
-WHERE user_id = $1
+WHERE user_id = $1 AND archived_at IS NULL
 ORDER BY computed_at DESC
 LIMIT 1;
 
 -- name: ListBaselinesByUserID :many
 -- For the audit / history view (deferred to v2; cheap to ship now).
 SELECT * FROM baselines
-WHERE user_id = $1
+WHERE user_id = $1 AND archived_at IS NULL
 ORDER BY computed_at DESC
 LIMIT $2;
+
+-- name: ArchiveBaselinesByUserID :exec
+-- Used by POST /v1/me/onboarding/reset. Soft-deletes all of a user's
+-- baselines so a fresh wizard run starts with no history visible. The
+-- archived rows remain in-table for cost auditing.
+UPDATE baselines SET archived_at = now()
+ WHERE user_id = $1 AND archived_at IS NULL;

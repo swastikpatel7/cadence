@@ -11,10 +11,12 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 RETURNING *;
 
 -- name: GetCurrentPlanByUserID :one
--- The "live" plan is the one with superseded_by IS NULL. Index
--- `coach_plans_user_current` is partial-on-that-condition.
+-- The "live" plan must be both un-superseded AND un-archived. Partial
+-- index `coach_plans_user_current` covers both predicates.
 SELECT * FROM coach_plans
-WHERE user_id = $1 AND superseded_by IS NULL
+WHERE user_id = $1
+  AND superseded_by IS NULL
+  AND archived_at IS NULL
 ORDER BY starts_on DESC
 LIMIT 1;
 
@@ -25,14 +27,24 @@ LIMIT 1;
 SELECT * FROM coach_plans
 WHERE user_id = $1
   AND superseded_by IS NULL
+  AND archived_at IS NULL
   AND starts_on <= $3
   AND (starts_on + (weeks_count || ' weeks')::interval)::date >= $2;
 
 -- name: MarkPlanSuperseded :exec
 -- Called after a successful WeeklyRefreshWorker INSERT to chain the
--- prior current plan to the new one.
+-- prior current plan to the new one. Archived rows are skipped — they
+-- have already been retired by the reset flow and shouldn't be touched.
 UPDATE coach_plans
 SET superseded_by = $2
 WHERE user_id = $1
   AND superseded_by IS NULL
+  AND archived_at IS NULL
   AND id <> $2;
+
+-- name: ArchiveCoachPlansByUserID :exec
+-- Used by POST /v1/me/onboarding/reset. Soft-deletes the user's full
+-- plan history so the wizard re-runs cleanly. Plan JSONB is preserved
+-- for cost auditing.
+UPDATE coach_plans SET archived_at = now()
+ WHERE user_id = $1 AND archived_at IS NULL;
