@@ -82,6 +82,14 @@ type Config struct {
 	ModelOpus   string
 	ModelSonnet string
 	ModelHaiku  string
+	// BaseURL, when non-empty, replaces the default Anthropic host. We
+	// use this to route through Cloudflare AI Gateway (a transparent
+	// proxy that gives us a request log + retry/cache layer in front of
+	// Anthropic). Shape:
+	//   https://gateway.ai.cloudflare.com/v1/{account_id}/{gateway_id}/anthropic
+	// The SDK appends `/v1/messages` so the path stays correct. Empty
+	// string preserves the default api.anthropic.com path.
+	BaseURL string
 }
 
 // New constructs a Client. If APIKey is empty the returned Client has
@@ -106,7 +114,12 @@ func New(cfg Config) *Client {
 		return c
 	}
 
-	cli := anthropic.NewClient(option.WithAPIKey(cfg.APIKey))
+	opts := []option.RequestOption{option.WithAPIKey(cfg.APIKey)}
+	if cfg.BaseURL != "" {
+		opts = append(opts, option.WithBaseURL(cfg.BaseURL))
+		log.Info("coach: routing Anthropic traffic via gateway", "base_url", cfg.BaseURL)
+	}
+	cli := anthropic.NewClient(opts...)
 	c.api = &cli
 	return c
 }

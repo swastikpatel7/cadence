@@ -129,6 +129,7 @@ func InitDependencies(ctx context.Context) (*Dependencies, error) {
 		ModelOpus:   cfg.AnthropicModelOpus,
 		ModelSonnet: cfg.AnthropicModelSonnet,
 		ModelHaiku:  cfg.AnthropicModelHaiku,
+		BaseURL:     cfg.CoachAIGatewayBaseURL,
 	})
 
 	// Build the worker bundle before the client (river requires every

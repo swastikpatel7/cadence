@@ -41,6 +41,14 @@ const (
 	EnvAnthropicModelSonnet = "ANTHROPIC_MODEL_SONNET"
 	EnvAnthropicModelHaiku  = "ANTHROPIC_MODEL_HAIKU"
 
+	// Optional Anthropic base-URL override. When set, the coach client
+	// posts to this URL instead of api.anthropic.com — used to route
+	// through Cloudflare AI Gateway (or any other transparent proxy).
+	// Expected shape:
+	//   https://gateway.ai.cloudflare.com/v1/{account_id}/{gateway_id}/anthropic
+	// The SDK appends `/v1/messages` to whatever is set here.
+	EnvCoachAIGatewayBaseURL = "COACH_AI_GATEWAY_BASE_URL"
+
 	// Crypto (used Phase 3 onward)
 	EnvEncryptionKey = "ENCRYPTION_KEY"
 )
@@ -64,11 +72,13 @@ type Config struct {
 
 	WebBaseURL string
 
-	AnthropicAPIKey     string
-	AnthropicModel      string
+	AnthropicAPIKey      string
+	AnthropicModel       string
 	AnthropicModelOpus   string
 	AnthropicModelSonnet string
 	AnthropicModelHaiku  string
+
+	CoachAIGatewayBaseURL string
 
 	EncryptionKey string
 }
@@ -93,6 +103,7 @@ func Load() (*Config, error) {
 		AnthropicModelOpus:       os.Getenv(EnvAnthropicModelOpus),
 		AnthropicModelSonnet:     os.Getenv(EnvAnthropicModelSonnet),
 		AnthropicModelHaiku:      os.Getenv(EnvAnthropicModelHaiku),
+		CoachAIGatewayBaseURL:    os.Getenv(EnvCoachAIGatewayBaseURL),
 		EncryptionKey:            os.Getenv(EnvEncryptionKey),
 	}
 
