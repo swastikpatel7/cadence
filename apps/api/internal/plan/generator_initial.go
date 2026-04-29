@@ -35,9 +35,12 @@ var initialPlanSchema = map[string]any{
 	"type": "object",
 	"properties": map[string]any{
 		"weeks": map[string]any{
-			"type":     "array",
-			"minItems": 8,
-			"maxItems": 8,
+			"type": "array",
+			// `minItems`/`maxItems` intentionally omitted — Anthropic's
+			// structured-output API only accepts `minItems` values of
+			// 0 or 1, and rejects `maxItems` outright. The exact-8
+			// invariant is stated in the system prompt and enforced
+			// post-parse by `len(parsed.Weeks) != 8` below.
 			"items": map[string]any{
 				"type": "object",
 				"properties": map[string]any{

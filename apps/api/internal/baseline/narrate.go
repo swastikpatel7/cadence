@@ -33,10 +33,14 @@ var narrativeJSONSchema = map[string]any{
 			"type": "string",
 			"enum": []string{"T1", "T2", "T3", "T4", "T5"},
 		},
+		// `minLength` / `maxLength` intentionally omitted — Anthropic's
+		// structured-output API does not support string-length bounds.
+		// Length intent ("2-4 sentences, ≤ 90 words") lives in the system
+		// prompt; we don't post-validate length because clamping/rejecting
+		// user-facing prose for a few characters off would be worse than
+		// letting the model speak.
 		"narrative": map[string]any{
-			"type":      "string",
-			"minLength": 60,
-			"maxLength": 600,
+			"type": "string",
 		},
 		// Bounds are NOT expressed in the schema — Anthropic's structured-output
 		// API rejects `minimum`/`maximum` on integer types ("For 'integer'

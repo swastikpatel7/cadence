@@ -26,9 +26,12 @@ var weeklyRefreshSchema = map[string]any{
 	"type": "object",
 	"properties": map[string]any{
 		"weeks": map[string]any{
-			"type":     "array",
+			"type": "array",
+			// `minItems: 1` is the only array bound Anthropic accepts here
+			// (0 or 1 only). `maxItems` is not supported at all and silently
+			// 400's on some payloads. The exact-1-week shape is asserted
+			// post-parse by `len(parsed.Weeks) != 1` in GenerateWeekly.
 			"minItems": 1,
-			"maxItems": 1,
 			"items": map[string]any{
 				"type": "object",
 				"properties": map[string]any{
