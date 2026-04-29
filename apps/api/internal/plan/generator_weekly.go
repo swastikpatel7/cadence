@@ -12,6 +12,10 @@ import (
 	"github.com/swastikpatel7/cadence/apps/api/internal/coach"
 )
 
+// Shape is enforced by the in-prompt JSON example below plus post-parse
+// validation in parsePlanBlob; we deliberately do not use Anthropic's
+// `output_config.format` (rejects half the constraints we care about —
+// see docs/CHANGELOG.md 2026-04-30).
 const weeklyRefreshSystemPrompt = `You are Cadence's weekly plan adjuster. You will receive (a) the runner's current 8-week plan, (b) what they actually completed last week, and (c) the date the next week starts on.
 
 Your job: produce ONE week of sessions (week_index always 0, start_date = next_week_start) that smoothly continues the periodized arc. Adjust based on completion:
@@ -20,56 +24,33 @@ Your job: produce ONE week of sessions (week_index always 0, start_date = next_w
 - If they hit 60-90%: hold volume, swap one hard day for an easy day if recovery looks tight.
 - If they hit < 60% or skipped 2+ days: pull back 15-25% in volume, ease intensity for 3+ days.
 
-Stay in voice with the original plan: same session-type vocabulary, same intensity ladder. Output JSON exactly matching the provided schema. Output exactly ONE week.`
+Stay in voice with the original plan: same session-type vocabulary, same intensity ladder.
 
-var weeklyRefreshSchema = map[string]any{
-	"type": "object",
-	"properties": map[string]any{
-		"weeks": map[string]any{
-			"type": "array",
-			// `minItems: 1` is the only array bound Anthropic accepts here
-			// (0 or 1 only). `maxItems` is not supported at all and silently
-			// 400's on some payloads. The exact-1-week shape is asserted
-			// post-parse by `len(parsed.Weeks) != 1` in GenerateWeekly.
-			"minItems": 1,
-			"items": map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					// Bounds intentionally omitted — Anthropic structured-output
-					// rejects min/max on integer/number. The system prompt
-					// states week_index is always 0 and parsePlanBlob rejects
-					// negative distances; GenerateWeekly asserts WeekIndex==0
-					// after parse.
-					"week_index": map[string]any{"type": "integer"},
-					"start_date": map[string]any{"type": "string", "format": "date"},
-					"total_km":   map[string]any{"type": "number"},
-					"sessions": map[string]any{
-						"type": "array",
-						"items": map[string]any{
-							"type": "object",
-							"properties": map[string]any{
-								"date":                    map[string]any{"type": "string", "format": "date"},
-								"type":                    map[string]any{"type": "string", "enum": []string{"easy", "tempo", "intervals", "long", "recovery", "race_pace"}},
-								"distance_km":             map[string]any{"type": "number"},
-								"intensity":               map[string]any{"type": "string", "enum": []string{"easy", "moderate", "hard"}},
-								"pace_target_sec_per_km":  map[string]any{"type": "integer"},
-								"duration_min_target":     map[string]any{"type": "integer"},
-								"notes_for_coach":         map[string]any{"type": "string"},
-								"load":                    map[string]any{"type": "string", "enum": []string{"easy", "moderate", "hard", "peak"}},
-							},
-							"required":             []string{"date", "type", "distance_km", "intensity", "load"},
-							"additionalProperties": false,
-						},
-					},
-				},
-				"required":             []string{"week_index", "total_km", "sessions"},
-				"additionalProperties": false,
-			},
-		},
-	},
-	"required":             []string{"weeks"},
-	"additionalProperties": false,
+Output: respond with ONE JSON object and nothing else — no markdown fence, no commentary. Shape:
+
+{
+  "weeks": [
+    {
+      "week_index": 0,
+      "start_date": "YYYY-MM-DD",
+      "total_km": number,
+      "sessions": [
+        {
+          "date": "YYYY-MM-DD",
+          "type": "easy" | "tempo" | "intervals" | "long" | "recovery" | "race_pace",
+          "distance_km": number,
+          "intensity": "easy" | "moderate" | "hard",
+          "pace_target_sec_per_km": int,        // optional
+          "duration_min_target": int,           // optional
+          "notes_for_coach": "string",          // optional
+          "load": "easy" | "moderate" | "hard" | "peak"
+        }
+      ]
+    }
+  ]
 }
+
+Emit exactly one week object with week_index = 0. Do not include any field not listed above.`
 
 // WeeklyRefreshInput is the structured prior-week summary the worker
 // composes and hands to GenerateWeekly.
@@ -123,7 +104,6 @@ func GenerateWeekly(
 		Thinking: coach.AdaptiveThinkingOmitted(),
 		OutputConfig: anthropic.OutputConfigParam{
 			Effort: anthropic.OutputConfigEffortMedium,
-			Format: anthropic.JSONOutputFormatParam{Schema: weeklyRefreshSchema},
 		},
 	}
 

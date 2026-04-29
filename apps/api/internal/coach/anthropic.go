@@ -23,8 +23,16 @@
 //   - `cache_control: {type: "ephemeral"}` attaches to a `TextBlockParam`
 //     via `CacheControl: anthropic.CacheControlEphemeralParam{}`. The
 //     System block accepts `[]TextBlockParam`, so we attach it there.
-//   - JSON-schema output goes through
-//     `OutputConfig.Format = anthropic.JSONOutputFormatParam{Schema: …}`.
+//
+// Note on JSON output: `OutputConfig.Format` (Anthropic structured
+// outputs) is intentionally NOT used. Its schema validator rejects
+// `minItems > 1`, `minimum`/`maximum` on number/integer types, and
+// string-length bounds — half the constraints any non-trivial plan
+// schema needs. Each generator instead embeds a literal JSON example
+// in its system prompt and relies on Go-side post-parse validation
+// (see `parsePlanBlob` / `parseNarrative`). The retry-on-parse-failure
+// path in each generator covers transient strays. See
+// docs/CHANGELOG.md 2026-04-30 for the migration record.
 //
 // Usage extracts:
 //
